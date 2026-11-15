@@ -137,6 +137,7 @@ class MainWindow(QMainWindow):
         self._update_download: UpdateDownloadWorker | None = None
         self._update_progress: QProgressDialog | None = None
         self._update_silent = False
+        self._update_version = ""
 
         self._build_ui()
         self._build_menus()
@@ -812,6 +813,10 @@ class MainWindow(QMainWindow):
     def _begin_update(self, release: Release, choice: tuple[str, str]) -> None:
         name, url = choice
         target = Path(tempfile.mkdtemp(prefix="pdfblack-update-")) / name
+        self._update_version = release.version
+        # Ladebalken in der Statuszeile - auch beim stillen Update.
+        self.progress.setRange(0, 0)
+        self.progress.setVisible(True)
         self.statusBar().showMessage(f"Update {release.version} wird geladen …")
         if not self._update_silent:
             dialog = QProgressDialog(
@@ -832,6 +837,14 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _on_update_progress(self, received: int, total: int) -> None:
+        if total:
+            value = min(received, total)
+            self.progress.setRange(0, total)
+            self.progress.setValue(value)
+            self.statusBar().showMessage(
+                f"Update {self._update_version} wird geladen … "
+                f"{value * 100 // total} %"
+            )
         dialog = self._update_progress
         if dialog is None or not total:
             return
@@ -868,6 +881,9 @@ class MainWindow(QMainWindow):
         if dialog is not None:
             dialog.close()
             dialog.deleteLater()
+        self.progress.setVisible(False)
+        self.progress.setRange(0, 0)
+        self.progress.setValue(0)
 
     # ------------------------------------------------------------------
 

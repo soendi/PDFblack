@@ -103,8 +103,9 @@ ohne Rückfrage. Von Hand geht das über **Hilfe → Nach Updates suchen …**; 
 meldet die Anwendung auch, wenn die installierte Version die aktuelle ist.
 
 Das Update ist für die Windows-Fassung gedacht: Das Setup-Programm läuft
-still, PDFblack wird geschlossen, ersetzt und neu gestartet. Windows kann dabei
-einmal die Sicherheitsabfrage (UAC) zeigen. Eine Quellcode-Installation wird
+still, PDFblack wird geschlossen, ersetzt und neu gestartet. Während des
+Ladens zeigt die Statuszeile einen Ladebalken mit Prozentangabe. Windows kann
+dabei einmal die Sicherheitsabfrage (UAC) zeigen. Eine Quellcode-Installation wird
 nicht angetastet – sie bekommt nur den Hinweis auf die neue Version.
 
 Abschalten: `pdfblack --no-update` oder die Umgebungsvariable
