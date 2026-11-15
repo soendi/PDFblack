@@ -4,11 +4,20 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
 
-if [ ! -x "$PYTHON" ]; then
-    echo "Python-Interpreter nicht gefunden: $PYTHON" >&2
-    echo "Bitte zuerst die virtuelle Umgebung anlegen (siehe README)." >&2
+# Interpreter bestimmen: explizit gesetzt (PYTHON=...), sonst die virtuelle
+# Umgebung im Projekt, sonst der Python aus dem PATH (z. B. auf CI-Runnern).
+if [ -z "${PYTHON:-}" ]; then
+    if [ -x "$ROOT/.venv/bin/python" ]; then
+        PYTHON="$ROOT/.venv/bin/python"
+    else
+        PYTHON="$(command -v python3 || command -v python || true)"
+    fi
+fi
+
+if [ -z "${PYTHON:-}" ] || [ ! -x "$PYTHON" ]; then
+    echo "Kein Python-Interpreter gefunden. Bitte virtuelle Umgebung anlegen" >&2
+    echo "(siehe README) oder PYTHON=/pfad/zu/python setzen." >&2
     exit 1
 fi
 
