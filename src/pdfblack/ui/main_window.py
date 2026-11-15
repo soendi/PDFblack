@@ -894,7 +894,11 @@ class MainWindow(QMainWindow):
         self._close_update_progress()
         result = install(Path(path))
         if not result.ok:
-            self.statusBar().showMessage("Update nicht eingespielt.", 8000)
+            self.statusBar().showMessage(
+                "Update nicht eingespielt – bitte von Hand von der Release-Seite "
+                "installieren.",
+                15000,
+            )
             if not self._update_silent:
                 QMessageBox.warning(self, "Update nicht möglich", result.message)
             return

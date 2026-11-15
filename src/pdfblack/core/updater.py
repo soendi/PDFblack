@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -24,6 +25,8 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 INSTALL_FLAGS = ("/SILENT", "/NORESTART", "/CLOSEAPPLICATIONS")
+# So lange muss das gestartete Setup laufen, damit es als "laeuft" gilt.
+SETUP_GRACE = 2.0
 
 DEFAULT_REPO = "soendi/PDFblack"
 USER_AGENT = "PDFblack-Updater"
@@ -215,6 +218,11 @@ def asset_for(release: Release, system: str | None = None) -> tuple[str, str] | 
 # ---------------------------------------------------------------------------
 
 
+def release_page() -> str:
+    """Seite, unter der die Fassungen zum Herunterladen liegen."""
+    return f"https://github.com/{repository()}/releases/latest"
+
+
 def can_install() -> bool:
     """Kann diese Installation sich selbst ersetzen?"""
     return sys.platform.startswith("win") and bool(getattr(sys, "frozen", False))
@@ -236,13 +244,27 @@ def install(archive: Path) -> InstallResult:
         subprocess, "CREATE_NO_WINDOW", 0
     )
     try:
-        subprocess.Popen(  # noqa: S603 - feste Argumentliste, eigene Datei
+        process = subprocess.Popen(  # noqa: S603 - feste Argumentliste, eigene Datei
             [str(archive), *INSTALL_FLAGS],
             close_fds=True,
             creationflags=flags,
         )
     except OSError as exc:
         return InstallResult(False, f"Der Installer liess sich nicht starten: {exc}")
+    # Bricht das Setup sofort ab, bleibt die Anwendung offen und verweist auf
+    # die Release-Seite - sonst waere nach dem Schliessen gar nichts passiert.
+    deadline = time.monotonic() + SETUP_GRACE
+    while time.monotonic() < deadline:
+        code = process.poll()
+        if code is not None:
+            if code != 0:
+                return InstallResult(
+                    False,
+                    f"Das Setup wurde ohne Installation beendet (Code {code}). "
+                    f"Bitte die neue Fassung von {release_page()} installieren.",
+                )
+            break
+        time.sleep(0.1)
     return InstallResult(
         True,
         "Das Update wird im Hintergrund eingespielt, PDFblack oeffnet sich "

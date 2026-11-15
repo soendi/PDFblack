@@ -169,6 +169,9 @@ def test_einbau_startet_das_setup_still(monkeypatch, tmp_path):
         def __init__(self, args, **kwargs) -> None:
             aufrufe.append(list(args))
 
+        def poll(self):
+            return None
+
     monkeypatch.setattr(updater.subprocess, "Popen", _Popen)
     monkeypatch.setattr(updater.sys, "platform", "win32")
 
@@ -195,3 +198,24 @@ def test_installer_startet_das_programm_nach_dem_einbau():
     assert "nowait" in eintrag
     # skipifsilent wuerde beim stillen Update genau den Neustart verhindern.
     assert "skipifsilent" not in eintrag
+
+
+def test_abgebrochenes_setup_bleibt_offen(monkeypatch, tmp_path):
+    archive = tmp_path / "PDFblack-1.0.7-Setup.exe"
+    archive.write_bytes(b"MZ")
+
+    class _Popen:
+        def __init__(self, args, **kwargs) -> None:
+            pass
+
+        def poll(self):
+            return 5
+
+    monkeypatch.setattr(updater.subprocess, "Popen", _Popen)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+
+    result = updater.install(archive)
+
+    assert result.ok is False
+    assert "Code 5" in result.message
+    assert updater.release_page() in result.message

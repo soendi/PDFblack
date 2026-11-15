@@ -1,6 +1,10 @@
-## PDFblack 1.0.6
+## PDFblack 1.0.7
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.0.7
+
+- **Kein stiller Fehlschlag mehr:** Bricht das Setup beim Update sofort ab, schließt sich PDFblack nicht mehr, sondern bleibt offen und nennt den Link zur Release-Seite. Bisher war das Programm danach einfach weg, ohne dass etwas installiert wurde.
 
 ### Neu in 1.0.6
 
@@ -36,13 +40,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.6-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.7-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 23 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 24 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 
