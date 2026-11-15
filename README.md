@@ -85,6 +85,25 @@ Muster, manuelle Werte und Regexe – die Oberfläche weist darauf hin.
 - **Zoom**: `+`/`−`, `Strg + Mausrad`, „Anpassen“ passt die Seitenbreite ein.
 - **Tastenkürzel**: `Strg+O` öffnen, `Strg+S` speichern unter, `F1` Anleitung.
 
+## Updates
+
+PDFblack prüft beim Start im Hintergrund, ob auf
+[github.com/soendi/PDFblack/releases](https://github.com/soendi/PDFblack/releases)
+eine neuere Version steht, lädt sie und spielt sie ein – ohne Assistent und
+ohne Rückfrage. Von Hand geht das über **Hilfe → Nach Updates suchen …**; dort
+meldet die Anwendung auch, wenn die installierte Version die aktuelle ist.
+
+| Installation | Verhalten beim Update |
+| --- | --- |
+| Windows (Setup) | Das Setup läuft still, PDFblack wird geschlossen, ersetzt und neu gestartet. Windows kann dabei einmal die Sicherheitsabfrage (UAC) zeigen. |
+| Linux (Archiv `.tar.gz`) | Ein Hilfsskript wartet, bis PDFblack beendet ist, ersetzt das Programmverzeichnis und startet die Anwendung neu. |
+| Linux (`.deb`) | `/opt` ist geschützt, daher wird nichts ersetzt; die neue Fassung kommt über `sudo apt install ./PDFblack_<version>_amd64.deb`. |
+| Quellcode-Installation | Kein Einbau, nur der Hinweis auf die neue Version. |
+
+Abschalten: `pdfblack --no-update` oder die Umgebungsvariable
+`PDFBLACK_NO_UPDATE=1`. Ein anderes Repository lässt sich mit
+`PDFBLACK_UPDATE_REPO=besitzer/name` einstellen.
+
 ## Grenzen
 
 - PDFs ohne Textebene (reine Scans) enthalten keinen durchsuchbaren Text und

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import sys
+import tempfile
+from pathlib import Path
 
 from PySide6.QtCore import QRect, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
@@ -17,6 +20,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressBar,
+    QProgressDialog,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -31,6 +35,14 @@ from ..core.detect import DetectionOptions, run_detection
 from ..core.extract import open_document
 from ..core.models import Category, Finding, PdfPasswordError
 from ..core.redact import apply_redactions
+from ..core.updater import (
+    Release,
+    asset_for,
+    download,
+    fetch_latest,
+    install,
+    is_newer,
+)
 from .branding import logo_pixmap
 from .canvas import PdfCanvas
 from .panels import ControlsPanel, DropZone, FindingsPanel
@@ -72,6 +84,40 @@ class DetectionWorker(QThread):
             self.succeeded.emit(result)
 
 
+class UpdateCheckWorker(QThread):
+    """Fragt im Hintergrund die neueste Veroeffentlichung ab."""
+
+    done = Signal(object)
+
+    def __init__(self, timeout: float = 8.0) -> None:
+        super().__init__()
+        self._timeout = timeout
+
+    def run(self) -> None:
+        self.done.emit(fetch_latest(self._timeout))
+
+
+class UpdateDownloadWorker(QThread):
+    """Laedt die Update-Datei und meldet den Fortschritt."""
+
+    progressed = Signal(int, int)
+    done = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, url: str, target: Path) -> None:
+        super().__init__()
+        self._url = url
+        self._target = target
+
+    def run(self) -> None:
+        try:
+            path = download(self._url, self._target, progress=self.progressed.emit)
+        except Exception as exc:  # noqa: BLE001 - Fehler geht an die Oberflaeche
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+            return
+        self.done.emit(str(path))
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -87,6 +133,10 @@ class MainWindow(QMainWindow):
         self._busy = False
         self._next_uid = 1
         self._last_dir = os.path.expanduser("~")
+        self._update_check: UpdateCheckWorker | None = None
+        self._update_download: UpdateDownloadWorker | None = None
+        self._update_progress: QProgressDialog | None = None
+        self._update_silent = False
 
         self._build_ui()
         self._build_menus()
@@ -258,6 +308,12 @@ class MainWindow(QMainWindow):
         guide.setShortcut(QKeySequence.HelpContents)
         guide.triggered.connect(self._show_guide)
         help_menu.addAction(guide)
+
+        self.update_action = QAction("Nach Updates suchen …", self)
+        self.update_action.triggered.connect(lambda: self._check_updates(silent=False))
+        help_menu.addAction(self.update_action)
+        help_menu.addSeparator()
+
         about = QAction(f"Über {APP_NAME}", self)
         about.triggered.connect(self._show_about)
         help_menu.addAction(about)
@@ -682,8 +738,143 @@ class MainWindow(QMainWindow):
         )
 
     # ------------------------------------------------------------------
+    # Updates
+    # ------------------------------------------------------------------
+
+    def start_auto_update(self) -> None:
+        """Beim Start still nach einer neueren Version sehen."""
+        QTimer.singleShot(2000, lambda: self._check_updates(silent=True))
+
+    def _check_updates(self, silent: bool) -> None:
+        if self._update_check is not None or self._update_download is not None:
+            return
+        if silent and self._path is not None:
+            # Waehrend der Arbeit nicht ungefragt beenden und neu starten.
+            return
+        self._update_silent = silent
+        if not silent:
+            self.update_action.setEnabled(False)
+            self.statusBar().showMessage("Suche nach Updates …")
+        worker = UpdateCheckWorker()
+        worker.done.connect(self._on_update_checked)
+        worker.finished.connect(worker.deleteLater)
+        self._update_check = worker
+        worker.start()
+
+    def _on_update_checked(self, release) -> None:
+        self._update_check = None
+        self.update_action.setEnabled(True)
+        silent = self._update_silent
+        if not silent:
+            self.statusBar().showMessage("Bereit.", 4000)
+        if release is None:
+            if not silent:
+                QMessageBox.warning(
+                    self,
+                    "Nach Updates suchen",
+                    "Die Update-Quelle war nicht erreichbar. Bitte die "
+                    "Internetverbindung prüfen und erneut versuchen.",
+                )
+            return
+        if not is_newer(APP_VERSION, release.version):
+            if not silent:
+                QMessageBox.information(
+                    self,
+                    "Nach Updates suchen",
+                    f"{APP_NAME} {APP_VERSION} ist auf dem neuesten Stand.",
+                )
+            return
+        choice = asset_for(release)
+        if choice is None:
+            if not silent:
+                QMessageBox.information(
+                    self,
+                    "Nach Updates suchen",
+                    f"Version {release.version} ist verfügbar, für dieses "
+                    "Betriebssystem gibt es aber kein passendes Paket.\n\n"
+                    f"{release.page}",
+                )
+            return
+        if not silent:
+            answer = QMessageBox.question(
+                self,
+                "Update verfügbar",
+                f"Version {release.version} ist verfügbar "
+                f"(installiert: {APP_VERSION}).\n\nJetzt herunterladen und "
+                "installieren?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if answer != QMessageBox.Yes:
+                return
+        self._begin_update(release, choice)
+
+    def _begin_update(self, release: Release, choice: tuple[str, str]) -> None:
+        name, url = choice
+        target = Path(tempfile.mkdtemp(prefix="pdfblack-update-")) / name
+        self.statusBar().showMessage(f"Update {release.version} wird geladen …")
+        if not self._update_silent:
+            dialog = QProgressDialog(
+                f"{APP_NAME} {release.version} wird geladen …", "", 0, 0, self
+            )
+            dialog.setWindowTitle("Update")
+            dialog.setCancelButton(None)
+            dialog.setWindowModality(Qt.WindowModal)
+            dialog.setMinimumDuration(0)
+            dialog.show()
+            self._update_progress = dialog
+        worker = UpdateDownloadWorker(url, target)
+        worker.progressed.connect(self._on_update_progress)
+        worker.done.connect(self._on_update_downloaded)
+        worker.failed.connect(self._on_update_failed)
+        worker.finished.connect(worker.deleteLater)
+        self._update_download = worker
+        worker.start()
+
+    def _on_update_progress(self, received: int, total: int) -> None:
+        dialog = self._update_progress
+        if dialog is None or not total:
+            return
+        dialog.setRange(0, total)
+        dialog.setValue(min(received, total))
+
+    def _on_update_downloaded(self, path: str) -> None:
+        self._update_download = None
+        self._close_update_progress()
+        result = install(Path(path))
+        if not result.ok:
+            self.statusBar().showMessage("Update nicht eingespielt.", 8000)
+            if not self._update_silent:
+                QMessageBox.warning(self, "Update nicht möglich", result.message)
+            return
+        self.statusBar().showMessage(result.message)
+        if not self._update_silent:
+            QMessageBox.information(self, "Update", result.message)
+        # Windows braucht einen Moment, damit der Installer PDFblack noch als
+        # laufend vorfindet und nach dem Update wieder starten kann.
+        delay = 3000 if sys.platform.startswith("win") else 500
+        QTimer.singleShot(delay, self.close)
+
+    def _on_update_failed(self, message: str) -> None:
+        self._update_download = None
+        self._close_update_progress()
+        self.statusBar().showMessage("Update konnte nicht geladen werden.", 8000)
+        if not self._update_silent:
+            QMessageBox.warning(self, "Update fehlgeschlagen", message)
+
+    def _close_update_progress(self) -> None:
+        dialog = self._update_progress
+        self._update_progress = None
+        if dialog is not None:
+            dialog.close()
+            dialog.deleteLater()
+
+    # ------------------------------------------------------------------
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        if self._update_download is not None and self._update_download.isRunning():
+            # Laufenden Download nicht abreissen, sonst endet der Thread im Nichts.
+            self._update_download.wait(5000)
         if self._worker is not None:
             answer = QMessageBox.question(
                 self,

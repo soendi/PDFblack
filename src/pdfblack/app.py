@@ -102,6 +102,10 @@ def main(argv: list[str] | None = None) -> int:
             window.open_path(argument)
             break
 
+    # Stilles Update beim Start; abschaltbar fuer Tests und abweichende Builds.
+    if "--no-update" not in argv and os.environ.get("PDFBLACK_NO_UPDATE") != "1":
+        window.start_auto_update()
+
     return app.exec()
 
 
