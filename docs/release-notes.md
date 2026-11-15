@@ -46,6 +46,13 @@ Python-Zubehör nötig).
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 
+### Hinweis zum Update aus 1.0.5
+
+In 1.0.5 startete der Updater das Setup über die Windows-Shell; sie las den
+Aufruf falsch und meldete eine nicht gefundene Datei, es wurde nichts
+installiert. Wer 1.0.5 installiert hat, installiert 1.0.6 deshalb einmal von
+Hand; ab 1.0.6 läuft die Aktualisierung wieder selbsttätig.
+
 ### Hinweis zum Update aus 1.0.0
 
 Die Fassung 1.0.0 enthielt den Updater noch nicht. Wer 1.0.0 installiert hat,
