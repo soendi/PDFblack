@@ -30,8 +30,8 @@ Python-Zubehör nötig).
 
 ### Geprüft
 
-- 18 automatisierte Tests für Erkennung, Schweizer PLZ, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
-- Selbsttest der gepackten Anwendung (`PDFblack --self-test`) in beiden Builds
+- 19 automatisierte Tests für Erkennung, Hausnummern, Schweizer PLZ über Zeilenumbrüche, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 
 ### Hinweis zum Update aus 1.0.0
