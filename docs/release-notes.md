@@ -1,10 +1,18 @@
-## PDFblack 1.0.0
+## PDFblack 1.0.1
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
+### Neu in 1.0.1
+
+- **Schweizer Postleitzahlen:** vierstellige PLZ mit Präfix (`CH-8045`, `CH 3000 Bern`) und mit nachgestelltem Ort (`8045 Zürich`, `CH-1814 La Tour-de-Peilz`). Beträge, Mengen und Zeiteinheiten gelten nicht als Ort – „1500 Franken" bleibt stehen. Eigener Schalter in der automatischen Erkennung.
+- **Automatische Updates:** PDFblack prüft beim Start im Hintergrund, ob eine neue Version bereitsteht, lädt sie und spielt sie ohne Assistent ein. Von Hand über **Hilfe → Nach Updates suchen …**.
+- **Gemerkte Einstellungen:** die Häkchen der automatischen Erkennung und die Empfindlichkeit gelten beim nächsten Start weiter.
+- **Telefonnummern** mit beliebiger Ländervorwahl (`+41 …`), nicht mehr nur `+49`.
+- Anrede- und Grußfloskeln („Herrn", „Freundliche Grüsse") werden nicht mehr als Namen markiert.
+
 ### Funktionen
 
-- **Erkennung:** Personen und Vornamen (Microsoft Presidio + spaCy, deutsches Modell), Straße + Hausnummer, PLZ + Ort, Personal-, Ausweis-, Versicherten-, Kunden-, Vertrags- und Aktenzeichen, E-Mail, Telefon, IBAN, Datum
+- **Erkennung:** Personen und Vornamen (Microsoft Presidio + spaCy, deutsches Modell), Straße + Hausnummer, PLZ + Ort (Deutschland und Schweiz), Personal-, Ausweis-, Versicherten-, Kunden-, Vertrags- und Aktenzeichen, E-Mail, Telefon, IBAN, Datum
 - **Zweiter Durchlauf:** eigene Werte für Vorname, Nachname, Adresse, PLZ, Ort, Personennummer und weitere Begriffe
 - **Eigene Regexe:** beliebig viele Muster, ungültige Ausdrücke werden vor dem Start gemeldet
 - **Namen überall:** ein erkannter Name wird auch innerhalb von Adresszeilen, Briefköpfen und Fußzeilen geschwärzt
@@ -15,24 +23,28 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-**Windows:** `PDFblack-1.0.0-Setup.exe` herunterladen und ausführen (Installer, kein Administrator- oder Python-Zubehör nötig).
+**Windows:** `PDFblack-1.0.1-Setup.exe` herunterladen und ausführen (Installer, kein Administrator- oder Python-Zubehör nötig).
 
 **Linux (Debian/Ubuntu):**
 
 ```bash
-sudo apt install ./PDFblack_1.0.0_amd64.deb
+sudo apt install ./PDFblack_1.0.1_amd64.deb
 pdfblack
 ```
 
-Alternativ das Archiv `PDFblack-1.0.0-linux-x86_64.tar.gz` entpacken und `PDFblack/PDFblack` starten.
+Alternativ das Archiv `PDFblack-1.0.1-linux-x86_64.tar.gz` entpacken und `PDFblack/PDFblack` starten. Dieses Archiv kann sich ab 1.0.1 selbst aktualisieren.
 
 **macOS:** aus dem Quellcode mit `bash packaging/build_macos.sh` bauen.
 
 ### Geprüft
 
-- 8 automatisierte Tests für Erkennung, manuelle Werte, Regex, Überlappungen und Schwärzung
+- 18 automatisierte Tests für Erkennung, Schweizer PLZ, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) in beiden Builds
-- Speichern-Weg der Oberfläche: 29 Stellen geschwärzt, anschließend kein Resttext der geschwärzten Werte im PDF
+- Speicherprobe mit Schweizer Adresse: kein Resttext der geschwärzten Werte im Ergebnis-PDF
+
+### Hinweis zum Update aus 1.0.0
+
+Die Fassung 1.0.0 enthielt den Updater noch nicht. Wer 1.0.0 installiert hat, installiert 1.0.1 einmal von Hand; ab 1.0.1 läuft die Aktualisierung selbsttätig.
 
 ### Lizenzen
 

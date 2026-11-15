@@ -1,4 +1,4 @@
-# PDFblack 1.0.0
+# PDFblack 1.0.1
 
 Vertrauliche Daten in PDF-Dateien automatisch schwärzen – mit Vorschau, Prüfung
 und echter Entfernung des Textes.
@@ -128,15 +128,15 @@ Alle Varianten setzen eine virtuelle Umgebung mit den Abhängigkeiten voraus.
 
 ```bash
 bash packaging/build_linux.sh
-# Ergebnis: dist/PDFblack_1.0.0_amd64.deb, dist/PDFblack-1.0.0-linux-x86_64.tar.gz
-sudo apt install ./dist/PDFblack_1.0.0_amd64.deb
+# Ergebnis: dist/PDFblack_1.0.1_amd64.deb, dist/PDFblack-1.0.1-linux-x86_64.tar.gz
+sudo apt install ./dist/PDFblack_1.0.1_amd64.deb
 ```
 
 **Windows (Setup-EXE)**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-# Ergebnis: dist\PDFblack-1.0.0-Setup.exe  (benötigt Inno Setup 6)
+# Ergebnis: dist\PDFblack-1.0.1-Setup.exe  (benötigt Inno Setup 6)
 ```
 
 **macOS (.app + ZIP)**
