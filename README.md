@@ -31,6 +31,12 @@ und echter Entfernung des Textes.
 Der zweite Durchlauf greift genau dann, wenn die KI etwas nicht erkannt hat:
 Werte in die Felder eintragen, „Erkennung erneuern“ drücken, fertig.
 
+Ein einmal erkannter oder eingegebener Name wird im **ganzen Dokument** gesucht
+und geschwärzt – auch dann, wenn er mitten in einer Adresszeile, im Briefkopf
+oder in einer Fußzeile steht („Zustellung an: Schmidt-Lorenz, Königsallee 42 a“).
+Bei sehr häufigen Nachnamen kann das zu viel des Guten sein: solche Treffer
+lassen sich in der Vorschau einzeln abwählen.
+
 ### Eigene Regex-Ausdrücke
 
 Ein Muster pro Zeile. Optional mit Namen, der in der Trefferliste erscheint:

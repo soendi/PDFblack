@@ -18,6 +18,8 @@ from pdfblack.core.detect import (  # noqa: E402
     DetectionOptions,
     ManualTerm,
     RegexSpec,
+    get_analyzer,
+    name_tokens,
     run_detection,
     term_pattern,
 )
@@ -60,8 +62,8 @@ def test_manuelle_werte_und_regex(sample):
     )
     result = run_detection(str(sample), options)
     found = texts(result.findings)
-    # Der Name steht zweimal im Dokument (Anschrift und Anrede).
-    assert found.count("Schmidt-Lorenz") == 2
+    # Der Name steht an drei Stellen: Anschrift, Anrede und Zustellzeile.
+    assert found.count("Schmidt-Lorenz") == 3
     assert "München" in found
     assert "PE-8842/2024" in found
     assert all(f.uid for f in result.findings)
@@ -77,10 +79,10 @@ def test_ueberlappung_wird_zusammengefasst(sample):
     )
     result = run_detection(str(sample), options)
     found = texts(result.findings)
-    # An der ersten Fundstelle gewinnt der laengere Treffer, die Anrede bleibt
-    # als eigener, nicht ueberlappender Treffer erhalten.
+    # An der ersten Fundstelle gewinnt der laengere Treffer, Anrede und
+    # Zustellzeile bleiben als eigene, nicht ueberlappende Treffer erhalten.
     assert found.count("Maximiliane Schmidt-Lorenz") == 1
-    assert found.count("Schmidt-Lorenz") == 1
+    assert found.count("Schmidt-Lorenz") == 2
 
 
 def test_ungueltiger_regex_erzeugt_warnung(sample):
@@ -120,6 +122,43 @@ def test_schwaerzen_entfernt_text(sample, tmp_path):
     assert "Königsallee" in text
     # Originaldatei bleibt unveraendert
     assert "4711-2233" in pymupdf.open(str(sample))[0].get_text()
+
+
+def test_namensbestandteile():
+    assert name_tokens("Frau Schmidt-Lorenz") == {"Schmidt-Lorenz"}
+    assert name_tokens("Maximiliane Schmidt-Lorenz") == {
+        "Maximiliane",
+        "Schmidt-Lorenz",
+    }
+    # Strassen und Titel sind keine Namen
+    assert name_tokens("Königsallee") == set()
+    assert name_tokens("Herr Dr. Müller") == {"Müller"}
+
+
+def test_name_wird_in_adresszeile_geschaerzt(sample):
+    """Ein Name in der Adresszeile muss mitgeschwärzt werden.
+
+    Die KI erkennt den Namen in Anschrift und Anrede; in der Zustellzeile steht
+    er mitten in der Adresse. Die Namensübertragung muss ihn dort ebenfalls
+    finden.
+    """
+    analyzer, _ = get_analyzer()
+    if analyzer is None:
+        pytest.skip("spaCy-Modell ist nicht installiert")
+
+    result = run_detection(
+        str(sample),
+        DetectionOptions(
+            use_ai=True, ai_entities=("PERSON",), rule_groups=("address",)
+        ),
+    )
+    # Zustellzeile liegt unterhalb von y=600 (PDF-Punkte).
+    in_delivery_line = [
+        finding
+        for finding in result.findings
+        if finding.text == "Schmidt-Lorenz" and finding.rects[0][1] > 600
+    ]
+    assert in_delivery_line, [f.text for f in result.findings]
 
 
 def test_term_pattern_ignoriert_leerraum():

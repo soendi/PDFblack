@@ -28,6 +28,7 @@ LINES = [
     ("Mit freundlichen Grüßen", 11, 60, 548),
     ("Anna Müller", 11, 60, 574),
     ("Sachbearbeiterin, Durchwahl 089 / 998877", 9, 60, 590),
+    ("Zustellung an: Schmidt-Lorenz, Königsallee 42 a", 9, 60, 630),
 ]
 
 

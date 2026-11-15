@@ -73,6 +73,53 @@ _AI_STOPWORDS = frozenset(
     }
 )
 
+# Ein einmal erkannter Name wird im ganzen Dokument gesucht - auch dort, wo
+# er mitten in einer Adresszeile, einem Briefkopf oder einer Fusszeile steht.
+PRIORITY_NAME = 250
+
+_NAME_TITLES = frozenset(
+    {
+        "herr",
+        "herrn",
+        "frau",
+        "dr",
+        "dr.",
+        "prof",
+        "prof.",
+        "dipl",
+        "dipl.-ing.",
+        "dipl.-kfm.",
+        "ing",
+        "mag",
+        "familie",
+        "firma",
+    }
+)
+_NAME_PARTICLES = frozenset(
+    {"von", "van", "de", "del", "der", "den", "zu", "zur", "y", "af", "av"}
+)
+# Nur eindeutige Strassenendungen: "Berg" oder "Feld" koennen auch Namen sein.
+_STREET_ENDINGS = (
+    "stra\u00dfe",
+    "strasse",
+    "str",
+    "weg",
+    "allee",
+    "platz",
+    "ring",
+    "gasse",
+    "ufer",
+    "damm",
+    "chaussee",
+    "pfad",
+    "zeile",
+    "graben",
+    "wall",
+    "steig",
+    "viertel",
+    "siedlung",
+)
+
 _ENTITY_CATEGORY: dict[str, Category] = {
     "PERSON": Category.PERSON,
     "LOCATION": Category.POSTAL,
@@ -264,6 +311,31 @@ def _ai_text_allowed(entity_text: str) -> bool:
     return True
 
 
+def looks_like_street(token: str) -> bool:
+    lowered = token.lower()
+    return any(lowered.endswith(ending) for ending in _STREET_ENDINGS)
+
+
+def name_tokens(text: str) -> set[str]:
+    """Einzelne Namensbestandteile aus einem erkannten oder eingegebenen Namen."""
+    tokens: set[str] = set()
+    for raw in re.split(r"[\s,;:/()\[\]]+", text):
+        token = raw.strip(".,;:!?\"'")
+        if len(token) < 3:
+            continue
+        if not token[0].isupper():
+            continue
+        lowered = token.lower()
+        if lowered in _AI_STOPWORDS or lowered in _NAME_TITLES:
+            continue
+        if lowered in _NAME_PARTICLES:
+            continue
+        if looks_like_street(token) or not any(char.isalpha() for char in token):
+            continue
+        tokens.add(token)
+    return tokens
+
+
 def _strip_span(text: str, start: int, end: int) -> tuple[int, int]:
     raw = text[start:end]
     lead = len(raw) - len(raw.lstrip())
@@ -321,6 +393,10 @@ def run_detection(
         textmap = TextMap(doc)
         total = doc.page_count
         candidates: list[_Candidate] = []
+        name_pool: set[str] = set()
+        for term in options.manual_terms:
+            if term.category is Category.PERSON:
+                name_pool |= name_tokens(term.value)
 
         for index in range(total):
             if progress and progress(index, total, f"Seite {index + 1} von {total}") is False:
@@ -419,6 +495,8 @@ def run_detection(
                         entity_text = line[result.start : result.end]
                         if not _ai_text_allowed(entity_text):
                             continue
+                        if category is Category.PERSON:
+                            name_pool |= name_tokens(entity_text)
                         candidates.append(
                             _Candidate(
                                 page=index,
@@ -432,6 +510,43 @@ def run_detection(
                                 priority=PRIORITY_AI,
                             )
                         )
+
+        # --- Namensuebertragung --------------------------------------
+        # Damit der Name auch in der Adresszeile verschwindet, werden alle
+        # Namensbestandteile im gesamten Dokument gesucht.
+        if name_pool:
+            if (
+                progress
+                and progress(total, total, "Erkannte Namen werden im Dokument gesucht ...")
+                is False
+            ):
+                return DetectionResult([], warnings)
+            alternatives = "|".join(
+                rf"(?<!\w){re.escape(token)}(?!\w)"
+                for token in sorted(name_pool, key=len, reverse=True)
+            )
+            name_pattern = re.compile(alternatives, re.IGNORECASE | re.UNICODE)
+            for index in range(total):
+                page_text = textmap.page(index)
+                if not page_text.text:
+                    continue
+                for match in name_pattern.finditer(page_text.text):
+                    start, end = match.span()
+                    if end <= start:
+                        continue
+                    candidates.append(
+                        _Candidate(
+                            page=index,
+                            start=start,
+                            end=end,
+                            text=match.group(0),
+                            category=Category.PERSON,
+                            source="Name \u00b7 im Dokument \u00fcbertragen",
+                            entity="NAME",
+                            score=1.0,
+                            priority=PRIORITY_NAME,
+                        )
+                    )
 
         findings: list[Finding] = []
         uid = 0
