@@ -1,9 +1,10 @@
-## PDFblack 1.0.2
+## PDFblack 1.0.3
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
-### Neu in 1.0.2
+### Neu in 1.0.3
 
+- **Ladebalken:** Während das automatische Update herunterlädt, zeigt die Statuszeile einen Fortschrittsbalken mit Prozentangabe.
 - **Formular-PDFs:** Werte in Formularfeldern werden erkannt, und beim Schwärzen werden die betroffenen Felder geleert und entfernt. Bisher konnte ein Feldwert trotz geschwärzter Fläche im PDF erhalten bleiben.
 - **Hausnummern:** die Nummer hinter dem Straßennamen wird auch dann geschwärzt, wenn die Straße kein deutsches Suffix hat („Rue du Lac 12“, „Unter den Linden 5a“). Erkannt werden Zahl (`12`), Zahl mit Leerzeichen und Buchstabe (`12 a`) und Zahl mit Buchstabe ohne Abstand (`12a`).
 - **Schweizer Postleitzahlen:** vierstellige PLZ mit Präfix (`CH-8045`, `CH 3000 Bern`) und mit nachgestelltem Ort (`8045 Zürich`, `CH-1814 La Tour-de-Peilz`) – auch wenn Ort und PLZ in getrennten Zeilen oder getrennten Formularfeldern stehen (`9435` / `Heerbrugg`, in beiden Reihenfolgen) und wenn der Ort kleingeschrieben ist. Beträge, Mengen, Zeiträume und Nummernkreise (`4711-2233`, `PE-8842/2024`) gelten nicht als PLZ.
@@ -25,7 +26,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.2-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.3-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
