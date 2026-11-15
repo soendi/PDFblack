@@ -78,11 +78,19 @@ _CH_STOPWORDS = (
     "mitarbeiter|mitarbeitende|personen|seiten|mal|punkte|gramm|kilo|kilogramm|"
     "tonnen|meter|zentimeter|millimeter|kilometer|quadratmeter|kubikmeter|anzahl|"
     "nummer|nr|bestellungen|auftraege|aufträge|pakete|exemplare|einheiten|tage|"
-    "stunden|jahresgehalt|betrag|summe|saldo|gutschrift|belastung"
+    "stunden|jahresgehalt|betrag|summe|saldo|gutschrift|belastung|"
+    # Fuegeworter, damit ein kleingeschriebener Ort nicht jede Zahl zur PLZ
+    # macht ("9435 und 9430", "9435 bis 9440").
+    "und|oder|bis|von|nach|aus|auf|in|im|am|an|mit|fuer|für|zum|zur|der|die|"
+    "das|den|dem|des|ein|eine|einer|einem|eines|ist|sind|wird|werden|wurde|"
+    "nicht|auch|samt|sowie|bzw|ca|etwa|etc|pro|je|betraegt|beträgt|kostet|"
+    "gilt|umfasst|entspricht|gem|gemaeß|gemäß|inkl|zzgl"
 )
-# Ortsnamen duerfen innen gross schreiben (Tour-de-Peilz, Bad Ragaz).
+# Ortsnamen duerfen innen gross schreiben (Tour-de-Peilz, Bad Ragaz) und in
+# schlecht gesetzten PDFs auch klein beginnen; die Stopwortliste faengt die
+# haeufigen Fuellwoerter ab.
 _CH_CITY_WORD = (
-    r"[A-Z\u00c4\u00d6\u00dc][A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df\-'.]*"
+    r"[A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df][A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df\-'.]*"
 )
 _CH_PLZ = r"(?:1\d{3}|[2-9]\d{3})"
 
@@ -164,6 +172,18 @@ RULES: tuple[Rule, ...] = (
         case_sensitive=True,
         pattern=(
             rf"(?<![\d\w]){_CH_PLZ}(?!\d)[ \t]+"
+            rf"(?!(?i:{_CH_STOPWORDS})\b)"
+            rf"{_CH_CITY_WORD}(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
+        ),
+    ),
+    Rule(
+        key="ch_postal_break",
+        label="Schweizer PLZ (Ort in naechster Zeile)",
+        group="ch_postal",
+        category=Category.POSTAL,
+        case_sensitive=True,
+        pattern=(
+            rf"(?<![\d\w]){_CH_PLZ}(?!\d)[ \t]*\n[ \t]*"
             rf"(?!(?i:{_CH_STOPWORDS})\b)"
             rf"{_CH_CITY_WORD}(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
         ),

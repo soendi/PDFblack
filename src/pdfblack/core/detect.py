@@ -576,7 +576,10 @@ def run_detection(
             uid += 1
             findings.append(
                 Finding(
-                    text=page_text.text[start:end],
+                    # Treffer ueber einen Zeilenumbruch (PLZ und Ort in
+                    # getrennten Zeilen) fuer Anzeige und Endkontrolle
+                    # zusammenfassen.
+                    text=" ".join(page_text.text[start:end].split()),
                     category=candidate.category,
                     page=candidate.page,
                     rects=rects,

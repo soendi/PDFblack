@@ -124,6 +124,37 @@ def test_schwaerzen_entfernt_text(sample, tmp_path):
     assert "4711-2233" in pymupdf.open(str(sample))[0].get_text()
 
 
+def test_schweizer_plz_ueber_zeilenumbruch(tmp_path):
+    """PLZ und Ort duerfen in getrennten Zeilen stehen."""
+    path = tmp_path / "ch_umbruch.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    lines = [
+        "Musterstrasse 12",
+        "9435",
+        "Heerbrugg",
+        "9430 st. margrethen",
+        "Es kostet 1500 Franken.",
+        "Von 9435 bis 9440",
+    ]
+    for index, line in enumerate(lines):
+        page.insert_text((60, 100 + index * 24), line, fontsize=11, fontname="helv")
+    doc.save(str(path))
+    doc.close()
+
+    result = run_detection(
+        str(path),
+        DetectionOptions(use_ai=False, ai_entities=(), rule_groups=("ch_postal",)),
+    )
+    found = texts(result.findings)
+    assert any(item.startswith("9435") and "Heerbrugg" in item for item in found)
+    assert any(item.startswith("9430") for item in found)
+    derived = [item for f, item in zip(result.findings, found) if "\n" in f.text]
+    assert not derived, "Zeilenumbrueche gehoeren nicht in den Treffertext"
+    assert not any("1500" in item for item in found)
+    assert not any("9440" in item for item in found)
+
+
 def test_hausnummer_hinter_strassennamen(tmp_path):
     """Hausnummern auch ohne deutsches Strassen-Suffix, ohne Zahlen-Fehler."""
     path = tmp_path / "nr.pdf"

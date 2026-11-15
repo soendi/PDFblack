@@ -32,7 +32,9 @@ und echter Entfernung des Textes.
 Schweizer Postleitzahlen sind nur vierstellig. Damit nicht jede vierstellige
 Zahl (Jahr, Betrag, Stückzahl) geschwärzt wird, verlangt die Erkennung entweder
 den Präfix `CH`/`CH-` oder einen Ortsnamen dahinter, der kein Betrag und keine
-Mengenangabe ist („1500 Franken“ bleibt also stehen). Abschalten lässt sich das
+Mengenangabe ist („1500 Franken“ bleibt also stehen). Der Ort darf auch in der
+nächsten Zeile stehen (`9435` / `Heerbrugg`) und kleingeschrieben sein;
+Füllwörter wie „und“, „bis“ oder „Personen“ machen eine Zahl nicht zur PLZ. Abschalten lässt sich das
 über „Automatische Erkennung → Schweizer PLZ“.
 
 ![Schweizer Adresse mit vierstelliger PLZ](docs/vorschau-schweiz.png)
