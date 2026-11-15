@@ -84,6 +84,9 @@ Muster, manuelle Werte und Regexe – die Oberfläche weist darauf hin.
   Stelle), „Entfernen“ löscht markierte Einträge.
 - **Zoom**: `+`/`−`, `Strg + Mausrad`, „Anpassen“ passt die Seitenbreite ein.
 - **Tastenkürzel**: `Strg+O` öffnen, `Strg+S` speichern unter, `F1` Anleitung.
+- **Gemerkte Einstellungen**: Die Häkchen unter „Automatische Erkennung“ und die
+  Empfindlichkeit gelten auch beim nächsten Start. Die Felder für eigene Werte
+  bleiben bewusst leer – sie gehören zur jeweiligen Datei.
 
 ## Updates
 

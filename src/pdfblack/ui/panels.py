@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QCoreApplication, QSettings, QSize, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -35,6 +35,21 @@ SENSITIVITY = (
     ("Ausgewogen", 0.45),
     ("Empfindlich (mehr Treffer)", 0.28),
 )
+
+
+def _settings() -> QSettings:
+    """Einstellungen der Anwendung, auch ohne gesetzten Anwendungsnamen."""
+    if QCoreApplication.applicationName() and QCoreApplication.organizationName():
+        return QSettings()
+    return QSettings("PDFblack", "PDFblack")
+
+
+def _as_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return bool(value)
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _section(text: str) -> QLabel:
@@ -310,7 +325,49 @@ class ControlsPanel(QScrollArea):
         )
         layout.addStretch(1)
         self.setWidget(body)
+        self._restore_auto_settings()
+        for box in self._auto_boxes().values():
+            box.toggled.connect(self._save_auto_settings)
+        self.sensitivity.currentIndexChanged.connect(self._save_auto_settings)
         self._sync_ai_state()
+
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Einstellungen der automatischen Erkennung merken
+
+    def _auto_boxes(self) -> dict[str, QCheckBox]:
+        return {
+            "ki": self.ai_check,
+            "personen": self.cb_person,
+            "orte": self.cb_location,
+            "adressen": self.cb_address,
+            "schweizer_plz": self.cb_ch,
+            "nummern": self.cb_ids,
+            "kontakt": self.cb_contact,
+            "bank": self.cb_bank,
+            "datum": self.cb_date,
+        }
+
+    def _restore_auto_settings(self) -> None:
+        """Beim Start die zuletzt gewaehlten Optionen setzen."""
+        settings = _settings()
+        for key, box in self._auto_boxes().items():
+            stored = settings.value(f"erkennung/{key}")
+            if stored is not None:
+                box.setChecked(_as_bool(stored))
+        stored = settings.value("erkennung/empfindlichkeit")
+        if stored is not None:
+            try:
+                self.sensitivity.setCurrentIndex(int(stored))
+            except (TypeError, ValueError):
+                pass
+
+    def _save_auto_settings(self) -> None:
+        settings = _settings()
+        for key, box in self._auto_boxes().items():
+            settings.setValue(f"erkennung/{key}", box.isChecked())
+        settings.setValue("erkennung/empfindlichkeit", self.sensitivity.currentIndex())
 
     # ------------------------------------------------------------------
 
