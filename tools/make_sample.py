@@ -32,12 +32,33 @@ LINES = [
 ]
 
 
+# Zweite Seite: Schweizer Adresse mit vierstelliger PLZ.
+SWISS_LINES = [
+    ("Helvetia Versicherung AG", 15, 60, 84),
+    ("Schadenabteilung", 10, 60, 104),
+    ("Herrn", 11, 60, 168),
+    ("Beat Meier", 11, 60, 186),
+    ("Rue du Lac 12", 11, 60, 204),
+    ("CH-1814 La Tour-de-Peilz", 11, 60, 222),
+    ("Kundennummer: CH-77120", 11, 60, 272),
+    ("Telefon: +41 21 987 65 43", 11, 60, 290),
+    ("E-Mail: beat.meier@example.ch", 11, 60, 308),
+    ("Sehr geehrter Herr Meier,", 11, 60, 360),
+    ("Ihre Police 44-778-912 gilt ab 01.01.2025.", 11, 60, 386),
+    ("Bitte überweisen Sie 1'250.00 CHF bis zum 31.03.2025.", 11, 60, 404),
+    ("Freundliche Grüsse", 11, 60, 450),
+    ("Claudia Baumann", 11, 60, 476),
+    ("Helvetia Versicherung AG, 8045 Zürich", 9, 60, 492),
+]
+
+
 def build(path: Path) -> Path:
     doc = pymupdf.open()
-    page = doc.new_page(width=595, height=842)
-    page.draw_line((60, 130), (535, 130), color=(0.6, 0.6, 0.6), width=0.7)
-    for text, size, x, y in LINES:
-        page.insert_text((x, y), text, fontsize=size, fontname="helv", color=(0, 0, 0))
+    for lines in (LINES, SWISS_LINES):
+        page = doc.new_page(width=595, height=842)
+        page.draw_line((60, 130), (535, 130), color=(0.6, 0.6, 0.6), width=0.7)
+        for text, size, x, y in lines:
+            page.insert_text((x, y), text, fontsize=size, fontname="helv", color=(0, 0, 0))
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(path), garbage=4, deflate=True)
     doc.close()

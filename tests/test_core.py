@@ -124,6 +124,39 @@ def test_schwaerzen_entfernt_text(sample, tmp_path):
     assert "4711-2233" in pymupdf.open(str(sample))[0].get_text()
 
 
+def test_schweizer_plz(tmp_path):
+    """Vierstellige PLZ mit CH-Praefix und mit Ort dahinter."""
+    path = tmp_path / "ch.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    lines = [
+        "CH-8045 Zürich",
+        "CH 3000 Bern",
+        "Postadresse: 1204 Genf",
+        "Bitte überweisen Sie 1500 Franken bis Ende Monat.",
+        "Im Lager liegen 1200 Stück bereit.",
+        "Kundennummer: CH-77120",
+    ]
+    for index, line in enumerate(lines):
+        page.insert_text((60, 100 + index * 20), line, fontsize=11, fontname="helv")
+    doc.save(str(path))
+    doc.close()
+
+    result = run_detection(
+        str(path),
+        DetectionOptions(use_ai=False, ai_entities=(), rule_groups=("ch_postal",)),
+    )
+    found = texts(result.findings)
+    assert "CH-8045 Zürich" in found
+    assert "CH 3000 Bern" in found
+    assert "1204 Genf" in found
+    # Betrag und Stueckzahl sind keine Postleitzahlen
+    assert not any("Franken" in item for item in found)
+    assert not any("Stück" in item for item in found)
+    # fuenfstellige Nummer nach CH ist keine vierstellige PLZ
+    assert not any("CH-77120" in item for item in found)
+
+
 def test_namensbestandteile():
     assert name_tokens("Frau Schmidt-Lorenz") == {"Schmidt-Lorenz"}
     assert name_tokens("Maximiliane Schmidt-Lorenz") == {

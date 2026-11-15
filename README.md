@@ -24,9 +24,18 @@ und echter Entfernung des Textes.
 | --- | --- |
 | KI (Microsoft Presidio + spaCy, deutsches Modell) | Personen, Vornamen, Orte, Datumsangaben |
 | Muster (deutsche Regeln) | Straße + Hausnummer, PLZ + Ort, Personalnummer, Ausweis-, Versicherten-, Kunden-, Vertrags-, Aktenzeichen u. a. |
-| Kontakt/Bank | E-Mail, Telefon, IBAN |
+| Muster (Schweizer Regeln) | vierstellige PLZ: `CH-8045`, `CH 3000`, `8045 Zürich`, `CH-1814 La Tour-de-Peilz` |
+| Kontakt/Bank | E-Mail, Telefon (auch `+41 …`), IBAN |
 | Zweiter Durchlauf | alle Werte aus den Eingabefeldern (Vorname, Nachname, Adresse, PLZ, Ort, Personennummer, weitere Begriffe) |
 | Eigene Regexe | beliebige reguläre Ausdrücke, ein Ausdruck pro Zeile |
+
+Schweizer Postleitzahlen sind nur vierstellig. Damit nicht jede vierstellige
+Zahl (Jahr, Betrag, Stückzahl) geschwärzt wird, verlangt die Erkennung entweder
+den Präfix `CH`/`CH-` oder einen Ortsnamen dahinter, der kein Betrag und keine
+Mengenangabe ist („1500 Franken“ bleibt also stehen). Abschalten lässt sich das
+über „Automatische Erkennung → Schweizer PLZ“.
+
+![Schweizer Adresse mit vierstelliger PLZ](docs/vorschau-schweiz.png)
 
 Der zweite Durchlauf greift genau dann, wenn die KI etwas nicht erkannt hat:
 Werte in die Felder eintragen, „Erkennung erneuern“ drücken, fertig.

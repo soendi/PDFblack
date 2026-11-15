@@ -47,8 +47,19 @@ _AI_STOPWORDS = frozenset(
         "geehrte",
         "geehrter",
         "freundlichen",
+        "freundliche",
+        "freundlicher",
         "gruessen",
         "grüßen",
+        "grüsse",
+        "grüße",
+        "gruss",
+        "gruß",
+        "hochachtungsvoll",
+        "herr",
+        "herrn",
+        "damen",
+        "herren",
         "mit",
         "und",
         "oder",
@@ -306,6 +317,10 @@ def _ai_text_allowed(entity_text: str) -> bool:
     if cleaned.lower() in _AI_STOPWORDS:
         return False
     words = cleaned.split()
+    # Bestehen alle Woerter aus Floskeln ("Freundliche Gruesse"), ist es kein
+    # Name und kein Ort.
+    if all(word.strip(".,;:!?").lower() in _AI_STOPWORDS for word in words):
+        return False
     if len(words) == 1 and cleaned[0].islower():
         return False
     return True

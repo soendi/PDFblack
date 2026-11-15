@@ -23,6 +23,9 @@ class Rule:
     category: Category
     pattern: str
     group_index: int = 0
+    # Schweizer PLZ brauchen Gross-/Kleinschreibung, sonst wuerde jede Zahl
+    # mit folgendem Substantiv als Ort gelten.
+    case_sensitive: bool = False
 
 
 _STREET_SUFFIX = (
@@ -36,6 +39,25 @@ _HOUSE_NO = r"\d{1,4}\s?[a-zA-Z]?(?:[-/]\d{1,4})?"
 _PLZ = r"(?:0[1-9]|[1-9]\d)\d{3}"
 _CITY_PART = r"[\w\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df.\-]*"
 _PLZ_PREFIXES = "am|an|auf|bei|im|in|ob|ueber|unter|vor|der|dem|den|zur|zum"
+
+# --- Schweiz: vierstellige Postleitzahlen ---------------------------------
+# Ein Ort nach der Zahl ist nur dann eine PLZ, wenn das Wort kein Betrag,
+# keine Menge und keine Zeiteinheit ist ("1500 Franken", "1200 Stueck").
+_CH_STOPWORDS = (
+    "euro|eur|chf|franken|rappen|usd|dollar|stueck|stück|stk|stck|jahr|jahre|jahren|"
+    "monat|monate|monaten|woche|wochen|tag|tage|tagen|stunde|stunden|minute|minuten|"
+    "sekunde|sekunden|uhr|prozent|promille|million|millionen|milliarde|milliarden|"
+    "tausend|artikel|position|positionen|rechnung|rechnungen|kunde|kunden|kundin|"
+    "mitarbeiter|mitarbeitende|personen|seiten|mal|punkte|gramm|kilo|kilogramm|"
+    "tonnen|meter|zentimeter|millimeter|kilometer|quadratmeter|kubikmeter|anzahl|"
+    "nummer|nr|bestellungen|auftraege|aufträge|pakete|exemplare|einheiten|tage|"
+    "stunden|jahresgehalt|betrag|summe|saldo|gutschrift|belastung"
+)
+# Ortsnamen duerfen innen gross schreiben (Tour-de-Peilz, Bad Ragaz).
+_CH_CITY_WORD = (
+    r"[A-Z\u00c4\u00d6\u00dc][A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df\-'.]*"
+)
+_CH_PLZ = r"(?:1\d{3}|[2-9]\d{3})"
 
 _ID_SUFFIX = r"[. \t-]{0,2}(?:nummer|nr\.?|identifikationsnummer|id|zeichen|kennzeichen)"
 _ID_STEMS = (
@@ -81,7 +103,30 @@ RULES: tuple[Rule, ...] = (
         label="PLZ",
         group="address",
         category=Category.POSTAL,
-        pattern=r"(?:PLZ|Postleitzahl)[ \t]*:?[ \t]*\d{5}(?!\d)",
+        pattern=r"(?:PLZ|Postleitzahl)[ \t]*:?[ \t]*\d{4,5}(?!\d)",
+    ),
+    Rule(
+        key="ch_postal_prefix",
+        label="Schweizer PLZ (CH-8045)",
+        group="ch_postal",
+        category=Category.POSTAL,
+        case_sensitive=True,
+        pattern=(
+            rf"(?<!\w)(?i:CH)[ \t]*[-\u2011]?[ \t]*{_CH_PLZ}(?!\d)"
+            rf"(?:[ \t]+{_CH_CITY_WORD}){{0,3}}"
+        ),
+    ),
+    Rule(
+        key="ch_postal_city",
+        label="Schweizer PLZ + Ort",
+        group="ch_postal",
+        category=Category.POSTAL,
+        case_sensitive=True,
+        pattern=(
+            rf"(?<![\d\w]){_CH_PLZ}(?!\d)[ \t]+"
+            rf"(?!(?i:{_CH_STOPWORDS})\b)"
+            rf"{_CH_CITY_WORD}(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
+        ),
     ),
     Rule(
         key="id_number",
@@ -107,8 +152,10 @@ RULES: tuple[Rule, ...] = (
         group="contact",
         category=Category.CONTACT,
         pattern=(
-            r"(?<![\w])(?:\+49|0049|0)[ \t\-/]{0,3}(?:\([ \t]?0[ \t]?\)[ \t\-/]{0,3})?"
-            r"\d{2,5}[ \t\-/]{0,4}\d{2,8}(?:[ \t\-/]{0,4}\d{1,6})?(?!\w)"
+            # Landesvorwahl (+49, +41, 0049, 0041) oder fuehrende 0
+            r"(?<![\w])(?:\+\d{1,3}|00\d{1,3}|0)[ \t\-/]{0,3}"
+            r"(?:\([ \t]?0[ \t]?\)[ \t\-/]{0,3})?"
+            r"\d{2,5}(?:[ \t\-/]{0,4}\d{1,8}){1,4}(?!\w)"
         ),
     ),
     Rule(
@@ -128,7 +175,10 @@ RULES: tuple[Rule, ...] = (
 )
 
 _COMPILED: dict[str, re.Pattern[str]] = {
-    rule.key: re.compile(rule.pattern, re.IGNORECASE | re.UNICODE) for rule in RULES
+    rule.key: re.compile(
+        rule.pattern, re.UNICODE | (0 if rule.case_sensitive else re.IGNORECASE)
+    )
+    for rule in RULES
 }
 
 
@@ -141,4 +191,11 @@ def rules_for_groups(groups: tuple[str, ...] | set[str] | frozenset[str]) -> lis
     return [rule for rule in RULES if rule.group in wanted]
 
 
-ALL_GROUPS: tuple[str, ...] = ("address", "id", "contact", "bank", "date")
+ALL_GROUPS: tuple[str, ...] = (
+    "address",
+    "ch_postal",
+    "id",
+    "contact",
+    "bank",
+    "date",
+)

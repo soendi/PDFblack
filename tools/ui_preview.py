@@ -45,6 +45,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pdf", default=str(ROOT / "samples" / "beispiel.pdf"))
     parser.add_argument("--out", default=str(ROOT / "artifacts" / "vorschau.png"))
+    parser.add_argument("--page", type=int, default=1, help="Seite, die gezeigt wird")
     args = parser.parse_args()
 
     messages = _silence_dialogs()
@@ -70,6 +71,11 @@ def main() -> int:
     result = run_detection(window._path, options)
     window._on_detection_done(result)
     app.processEvents()
+    if args.page > 1 and args.page <= window.canvas.page_count:
+        window.scroll.verticalScrollBar().setValue(
+            int(window.canvas._page_pos[args.page - 1].y())
+        )
+        app.processEvents()
     window.grab().save(str(out))
 
     if window._findings:

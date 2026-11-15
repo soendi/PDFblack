@@ -262,6 +262,8 @@ class ControlsPanel(QScrollArea):
         self.cb_location.setChecked(True)
         self.cb_address = QCheckBox("Adressen (Straße, Hausnummer, PLZ + Ort)")
         self.cb_address.setChecked(True)
+        self.cb_ch = QCheckBox("Schweizer PLZ (CH-8045, 8045 Zürich)")
+        self.cb_ch.setChecked(True)
         self.cb_ids = QCheckBox("Nummern & IDs (Personalnummer, Ausweis …)")
         self.cb_ids.setChecked(True)
         self.cb_contact = QCheckBox("Kontakt (E-Mail, Telefon)")
@@ -274,6 +276,7 @@ class ControlsPanel(QScrollArea):
             self.cb_person,
             self.cb_location,
             self.cb_address,
+            self.cb_ch,
             self.cb_ids,
             self.cb_contact,
             self.cb_bank,
@@ -429,6 +432,8 @@ class ControlsPanel(QScrollArea):
         groups: list[str] = []
         if self.cb_address.isChecked():
             groups.append("address")
+        if self.cb_ch.isChecked():
+            groups.append("ch_postal")
         if self.cb_ids.isChecked():
             groups.append("id")
         if self.cb_contact.isChecked():
