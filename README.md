@@ -88,6 +88,10 @@ Muster, manuelle Werte und Regexe – die Oberfläche weist darauf hin.
 - **Mit der Maus aufziehen**: fügt einen eigenen Schwärzungsbereich hinzu.
 - **Trefferliste rechts**: Häkchen entfernen, Zeile anklicken (springt zur
   Stelle), „Entfernen“ löscht markierte Einträge.
+- **Nach Kategorie**: der zweite Abschnitt der Trefferspalte gruppiert alles
+  nach Art (Personen, Adressen, PLZ/Ort …). Ein Häkchen vor der Überschrift
+  schaltet die ganze Gruppe ein oder aus, ein Häkchen vor einem Eintrag nur
+  diesen.
 - **Zoom**: `+`/`−`, `Strg + Mausrad`, „Anpassen“ passt die Seitenbreite ein.
 - **Tastenkürzel**: `Strg+O` öffnen, `Strg+S` speichern unter, `F1` Anleitung.
 - **Gemerkte Einstellungen**: Die Häkchen unter „Automatische Erkennung“ und die

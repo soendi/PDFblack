@@ -23,12 +23,28 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from ..core.detect import DetectionOptions, ManualTerm, RegexSpec, compile_regexes
 from ..core.models import Category, Finding
+
+# Ueberschriften der Kategorie-Gruppen in der Trefferspalte.
+CATEGORY_GROUPS: dict[Category, str] = {
+    Category.PERSON: "Personen",
+    Category.ADDRESS: "Adressen",
+    Category.POSTAL: "PLZ / Ort",
+    Category.ID: "Nummern / IDs",
+    Category.CONTACT: "Kontakt",
+    Category.BANK: "Bank / Karte",
+    Category.DATE: "Datum",
+    Category.REGEX: "Eigene Regex",
+    Category.MANUAL: "Manuelle Bereiche",
+    Category.OTHER: "Sonstiges",
+}
 
 SENSITIVITY = (
     ("Streng (weniger Treffer)", 0.65),
@@ -599,6 +615,28 @@ class FindingsPanel(QFrame):
             _hint("Klick auf eine Zeile springt zur Stelle. Häkchen entfernen = nicht schwärzen.")
         )
 
+        # --- zweiter Abschnitt: dieselben Treffer nach Kategorie --------
+        self.group_label = _section("Nach Kategorie")
+        self.group_label.setVisible(False)
+        layout.addWidget(self.group_label)
+
+        self.group_hint = _hint(
+            "Häkchen vor einer Überschrift schaltet die ganze Gruppe ein oder aus."
+        )
+        self.group_hint.setVisible(False)
+        layout.addWidget(self.group_hint)
+
+        self.category_tree = QTreeWidget()
+        self.category_tree.setHeaderHidden(True)
+        self.category_tree.setIndentation(14)
+        self.category_tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.category_tree.setMinimumHeight(120)
+        self.category_tree.setVisible(False)
+        self.category_tree.itemChanged.connect(self._on_group_changed)
+        self.category_tree.itemClicked.connect(self._on_group_clicked)
+        self.category_tree.itemDoubleClicked.connect(self._on_group_double_clicked)
+        layout.addWidget(self.category_tree, 1)
+
     # ------------------------------------------------------------------
 
     def set_findings(self, findings: list[Finding]) -> None:
@@ -635,7 +673,53 @@ class FindingsPanel(QFrame):
         self.stack.setCurrentIndex(1 if findings else 0)
         for button in (self.btn_all, self.btn_none, self.btn_remove):
             button.setEnabled(bool(findings))
+        self._build_group_tree(findings)
         self.update_counts(findings)
+
+    # ------------------------------------------------------------------
+    # Treffer nach Kategorie
+
+    def _build_group_tree(self, findings: list[Finding]) -> None:
+        self._updating = True
+        self.category_tree.blockSignals(True)
+        self.category_tree.clear()
+
+        groups: dict[Category, list[Finding]] = {}
+        for finding in findings:
+            groups.setdefault(finding.category, []).append(finding)
+
+        for category, items in groups.items():
+            top = QTreeWidgetItem(
+                [f"{CATEGORY_GROUPS.get(category, category.value)} ({len(items)})"]
+            )
+            # ItemIsAutoTristate: Qt haelt den Gruppenhaken und schaltet beim
+            # Klick alle Kinder mit um.
+            top.setFlags(top.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate)
+            top.setForeground(0, QColor(category.color))
+            self.category_tree.addTopLevelItem(top)
+            for finding in items:
+                child = QTreeWidgetItem([finding.display_text])
+                child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                child.setData(0, Qt.UserRole, finding.uid)
+                child.setToolTip(
+                    0, f"{finding.source} · Seite {finding.page_label}"
+                )
+                child.setCheckState(0, Qt.Checked if finding.enabled else Qt.Unchecked)
+                top.addChild(child)
+            top.setExpanded(True)
+            checked = sum(1 for finding in items if finding.enabled)
+            if checked == 0:
+                top.setCheckState(0, Qt.Unchecked)
+            elif checked == len(items):
+                top.setCheckState(0, Qt.Checked)
+            else:
+                top.setCheckState(0, Qt.PartiallyChecked)
+
+        self.category_tree.blockSignals(False)
+        self._updating = False
+        self.category_tree.setVisible(bool(findings))
+        self.group_label.setVisible(bool(findings))
+        self.group_hint.setVisible(bool(findings))
 
     def update_counts(self, findings: list[Finding]) -> None:
         active = sum(1 for finding in findings if finding.enabled)
@@ -650,6 +734,15 @@ class FindingsPanel(QFrame):
                 item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
                 break
         self.table.blockSignals(False)
+        self.category_tree.blockSignals(True)
+        for index in range(self.category_tree.topLevelItemCount()):
+            top = self.category_tree.topLevelItem(index)
+            for child_index in range(top.childCount()):
+                child = top.child(child_index)
+                if child.data(0, Qt.UserRole) == uid:
+                    child.setCheckState(0, Qt.Checked if enabled else Qt.Unchecked)
+                    break
+        self.category_tree.blockSignals(False)
         self._updating = False
 
     def selected_uids(self) -> list[int]:
@@ -680,6 +773,41 @@ class FindingsPanel(QFrame):
         uid = item.data(Qt.UserRole)
         if isinstance(uid, int):
             self.enabledChanged.emit(uid, item.checkState() == Qt.Checked)
+
+    def _on_group_changed(self, item: QTreeWidgetItem, column: int) -> None:
+        if self._updating:
+            return
+        uid = item.data(0, Qt.UserRole)
+        if not isinstance(uid, int):
+            # Gruppenkopf: alle Kinder mit umschalten (nicht darauf verlassen,
+            # dass Qt das bei automatischem Tristate selbst tut).
+            enabled = item.checkState(0) != Qt.Unchecked
+            self._updating = True
+            self.category_tree.blockSignals(True)
+            for index in range(item.childCount()):
+                item.child(index).setCheckState(
+                    0, Qt.Checked if enabled else Qt.Unchecked
+                )
+            self.category_tree.blockSignals(False)
+            self._updating = False
+            for index in range(item.childCount()):
+                child_uid = item.child(index).data(0, Qt.UserRole)
+                if isinstance(child_uid, int):
+                    self.enabledChanged.emit(child_uid, enabled)
+            return
+        self.enabledChanged.emit(uid, item.checkState(0) == Qt.Checked)
+
+    def _on_group_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        uid = item.data(0, Qt.UserRole)
+        if isinstance(uid, int):
+            self.findingSelected.emit(uid)
+
+    def _on_group_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        uid = item.data(0, Qt.UserRole)
+        if not isinstance(uid, int):
+            return
+        checked = item.checkState(0) == Qt.Checked
+        item.setCheckState(0, Qt.Unchecked if checked else Qt.Checked)
 
     def _on_selection_changed(self) -> None:
         uids = self.selected_uids()

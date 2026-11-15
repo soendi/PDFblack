@@ -541,6 +541,7 @@ class MainWindow(QMainWindow):
             if finding.uid == uid:
                 finding.enabled = enabled
                 break
+        self.findings_panel.set_enabled_state(uid, enabled)
         self.findings_panel.update_counts(self._findings)
         self.canvas.update()
         self._refresh_state()
