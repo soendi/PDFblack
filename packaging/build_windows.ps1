@@ -23,8 +23,12 @@ try {
     & $python -m PyInstaller --noconfirm --clean --distpath dist --workpath build packaging\pdfblack.spec
 
     Write-Host "== Selbsttest der gebauten Anwendung =="
-    & "dist\PDFblack\PDFblack.exe" --self-test
-    if ($LASTEXITCODE -ne 0) { throw "Selbsttest fehlgeschlagen" }
+    # GUI-Anwendung: nicht einfach aufrufen, sondern auf das Prozessende warten.
+    $tested = Start-Process -FilePath "dist\PDFblack\PDFblack.exe" `
+        -ArgumentList "--self-test" -Wait -PassThru -NoNewWindow
+    if ($tested.ExitCode -ne 0) {
+        throw "Selbsttest fehlgeschlagen (Exit-Code $($tested.ExitCode))"
+    }
 
     $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
     if (Test-Path $iscc) {
