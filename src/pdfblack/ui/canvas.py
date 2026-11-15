@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRect, QRectF, QSize, QSizeF, Qt, Signal
+from PySide6.QtCore import QPointF, QRect, QRectF, QSize, QSizeF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QWidget
 
@@ -17,6 +17,7 @@ class PdfCanvas(QWidget):
 
     findingActivated = Signal(int)  # uid
     regionDrawn = Signal(int, float, float, float, float)  # page, x0, y0, x1, y1
+    wordActivated = Signal(int, str, float, float, float, float)  # Seite, Wort, Box
     zoomRequested = Signal(float)
     ensureRequested = Signal(QRect)
 
@@ -35,6 +36,13 @@ class PdfCanvas(QWidget):
         self._pixmaps: dict[int, tuple[float, QPixmap]] = {}
         self._drag_origin: QPointF | None = None
         self._drag_current: QPointF | None = None
+        # Ein Klick auf einen Treffer wird kurz verzoegert, damit ein
+        # Doppelklick (Wort schwaerzen) nicht vorher schon umschaltet.
+        self._pending_click = 0
+        self._click_timer = QTimer(self)
+        self._click_timer.setSingleShot(True)
+        self._click_timer.setInterval(180)
+        self._click_timer.timeout.connect(self._commit_click)
         self.setMouseTracking(True)
         self.setCursor(Qt.CrossCursor)
 
@@ -263,6 +271,31 @@ class PdfCanvas(QWidget):
                     return finding.uid
         return 0
 
+    def word_at(
+        self, page: int, point: QPointF
+    ) -> tuple[str, tuple[float, float, float, float]] | None:
+        """Wort unter einer Canvas-Position (kleinste passende Wortbox)."""
+        if self._doc is None or not (0 <= page < len(self._page_pos)):
+            return None
+        origin = self._page_pos[page]
+        x = (point.x() - origin.x()) / self._zoom
+        y = (point.y() - origin.y()) / self._zoom
+        try:
+            words = self._doc[page].get_text("words")
+        except Exception:
+            return None
+        best: tuple[float, str, tuple[float, float, float, float]] | None = None
+        for x0, y0, x1, y1, text, *_rest in words:
+            if not text.strip():
+                continue
+            if x0 - 1.0 <= x <= x1 + 1.0 and y0 - 1.5 <= y <= y1 + 1.5:
+                area = (x1 - x0) * (y1 - y0)
+                if best is None or area < best[0]:
+                    best = (area, text, (x0, y0, x1, y1))
+        if best is None:
+            return None
+        return best[1], best[2]
+
     def _to_page_rect(self, page: int, rect: QRectF) -> tuple[float, float, float, float]:
         origin = self._page_pos[page]
         size = self._page_sizes[page]
@@ -300,7 +333,8 @@ class PdfCanvas(QWidget):
         if (end - start).manhattanLength() < 8:
             uid = self._finding_at(end)
             if uid:
-                self.findingActivated.emit(uid)
+                self._pending_click = uid
+                self._click_timer.start()
             return
 
         area = QRectF(start, end).normalized()
@@ -311,6 +345,28 @@ class PdfCanvas(QWidget):
         if box[2] - box[0] < 3 or box[3] - box[1] < 3:
             return
         self.regionDrawn.emit(page, *box)
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        if event.button() != Qt.LeftButton or not self._doc:
+            return
+        # Ein Doppelklick schwaerzt das Wort; der Einzelklick davor
+        # (Treffer umschalten) wird verworfen.
+        self._click_timer.stop()
+        self._pending_click = 0
+        page = self._page_at(event.position())
+        if page is None:
+            return
+        hit = self.word_at(page, event.position())
+        if hit is None:
+            return
+        text, box = hit
+        self.wordActivated.emit(page, text, *box)
+
+    def _commit_click(self) -> None:
+        uid = self._pending_click
+        self._pending_click = 0
+        if uid:
+            self.findingActivated.emit(uid)
 
     def wheelEvent(self, event) -> None:  # noqa: N802
         if event.modifiers() & Qt.ControlModifier:

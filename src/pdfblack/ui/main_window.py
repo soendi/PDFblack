@@ -331,6 +331,7 @@ class MainWindow(QMainWindow):
         self.dropzone.fileDropped.connect(self.load_pdf)
 
         self.canvas.regionDrawn.connect(self._add_manual_region)
+        self.canvas.wordActivated.connect(self._add_word_region)
         self.canvas.findingActivated.connect(self._toggle_finding)
         self.canvas.zoomRequested.connect(self._set_zoom)
         self.canvas.ensureRequested.connect(self._ensure_visible)
@@ -586,6 +587,42 @@ class MainWindow(QMainWindow):
         self.canvas.set_selected(finding.uid)
         self.findings_panel.select_uid(finding.uid)
         self.statusBar().showMessage("Bereich manuell hinzugefügt.")
+
+    def _add_word_region(
+        self, page: int, text: str, x0: float, y0: float, x1: float, y1: float
+    ) -> None:
+        # Doppelklick im PDF: das Wort unter dem Cursor wird geschwaerzt.
+        for finding in self._findings:
+            if finding.page != page:
+                continue
+            for rect in finding.rects:
+                if (
+                    abs(rect[0] - x0) < 1.5
+                    and abs(rect[1] - y0) < 1.5
+                    and abs(rect[2] - x1) < 1.5
+                    and abs(rect[3] - y1) < 1.5
+                ):
+                    self.canvas.set_selected(finding.uid)
+                    self.findings_panel.select_uid(finding.uid)
+                    self.statusBar().showMessage(f"„{text}“ ist bereits markiert.")
+                    return
+        finding = Finding(
+            text=text,
+            category=Category.MANUAL,
+            page=page,
+            rects=[(x0, y0, x1, y1)],
+            source="Doppelklick",
+            entity="MANUAL",
+            score=1.0,
+            enabled=True,
+            uid=self._next_uid,
+        )
+        self._next_uid += 1
+        self._findings.append(finding)
+        self._sync_findings()
+        self.canvas.set_selected(finding.uid)
+        self.findings_panel.select_uid(finding.uid)
+        self.statusBar().showMessage(f"„{text}“ geschwärzt.")
 
     # ------------------------------------------------------------------
     # Ansicht

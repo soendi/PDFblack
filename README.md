@@ -1,4 +1,4 @@
-# PDFblack 1.0.4
+# PDFblack 1.0.5
 
 Vertrauliche Daten in PDF-Dateien automatisch schwärzen – mit Vorschau, Prüfung
 und echter Entfernung des Textes.
@@ -86,6 +86,8 @@ Muster, manuelle Werte und Regexe – die Oberfläche weist darauf hin.
 - **Markierung anklicken**: schaltet den Treffer aus oder wieder ein (gestrichelt
   = wird nicht geschwärzt).
 - **Mit der Maus aufziehen**: fügt einen eigenen Schwärzungsbereich hinzu.
+- **Doppelklick ins PDF**: das Wort unter dem Cursor wird sofort als eigene
+  Schwärzung übernommen (Kategorie „Manuell“) – wie ein darum gezogener Rahmen.
 - **Trefferliste rechts**: Häkchen entfernen, Zeile anklicken (springt zur
   Stelle), „Entfernen“ löscht markierte Einträge.
 - **Nach Kategorie**: der zweite Abschnitt der Trefferspalte gruppiert alles
@@ -137,7 +139,7 @@ Alle Varianten setzen eine virtuelle Umgebung mit den Abhängigkeiten voraus.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-# Ergebnis: dist\PDFblack-1.0.4-Setup.exe  (benötigt Inno Setup 6)
+# Ergebnis: dist\PDFblack-1.0.5-Setup.exe  (benötigt Inno Setup 6)
 ```
 
 **macOS (.app + ZIP)**
