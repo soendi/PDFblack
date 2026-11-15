@@ -158,3 +158,28 @@ def test_einbau_ausserhalb_von_windows(tmp_path):
     result = updater.install(paket)
     assert not result.ok
     assert "Windows" in result.message
+
+
+def test_einbau_wartet_und_startet_neu(tmp_path):
+    archive = tmp_path / "PDFblack-1.0.5-Setup.exe"
+    exe = "C:\\Program Files\\PDFblack\\PDFblack.exe"
+    command = updater.install_command(archive, [exe])
+
+    # Setup still, ohne Inno-eigenen Neustart ...
+    assert "/SILENT" in command and "/CLOSEAPPLICATIONS" in command
+    assert "/RESTARTAPPLICATIONS" not in command
+    # ... auf dessen Ende warten und danach PDFblack wieder starten.
+    assert "/wait" in command
+    assert f'"{archive}"' in command
+    assert command.index(f'"{archive}"') < command.index("&&") < command.index(f'"{exe}"')
+    assert command.rstrip().endswith(f'"{exe}"')
+
+
+def test_neustart_nutzt_das_eigene_programm(monkeypatch):
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "executable", "C:\\Apps\\PDFblack.exe")
+    assert updater.relaunch_target() == ["C:\\Apps\\PDFblack.exe"]
+
+    monkeypatch.setattr(updater.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(updater.sys, "executable", "C:\\Python\\python.exe")
+    assert updater.relaunch_target()[-2:] == ["-m", "pdfblack"]
