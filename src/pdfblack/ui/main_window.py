@@ -1,0 +1,702 @@
+"""Hauptfenster: Datei laden, Vorschau erzeugen, pruefen, schwaerzen speichern."""
+
+from __future__ import annotations
+
+import os
+
+from PySide6.QtCore import QRect, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QStackedWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .. import APP_NAME, APP_TAGLINE, APP_VERSION
+from ..core.detect import DetectionOptions, run_detection
+from ..core.extract import open_document
+from ..core.models import Category, Finding, PdfPasswordError
+from ..core.redact import apply_redactions
+from .branding import logo_pixmap
+from .canvas import PdfCanvas
+from .panels import ControlsPanel, DropZone, FindingsPanel
+
+
+class DetectionWorker(QThread):
+    """Fuehrt die Erkennung im Hintergrund aus, damit das Fenster bedienbar bleibt."""
+
+    progressed = Signal(int, int, str)
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, path: str, password: str | None, options: DetectionOptions) -> None:
+        super().__init__()
+        self._path = path
+        self._password = password
+        self._options = options
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def _progress(self, index: int, total: int, message: str) -> bool:
+        if self._cancelled:
+            return False
+        self.progressed.emit(index, total, message)
+        return True
+
+    def run(self) -> None:
+        try:
+            result = run_detection(
+                self._path, self._options, self._password, self._progress
+            )
+        except Exception as exc:  # noqa: BLE001 - Fehler geht an die Oberflaeche
+            if not self._cancelled:
+                self.failed.emit(f"{type(exc).__name__}: {exc}")
+            return
+        if not self._cancelled:
+            self.succeeded.emit(result)
+
+
+class MainWindow(QMainWindow):
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
+        self.resize(1380, 900)
+        self.setMinimumSize(QSize(1040, 680))
+        self.setAcceptDrops(True)
+
+        self._path: str | None = None
+        self._password: str | None = None
+        self._findings: list[Finding] = []
+        self._worker: DetectionWorker | None = None
+        self._busy = False
+        self._next_uid = 1
+        self._last_dir = os.path.expanduser("~")
+
+        self._build_ui()
+        self._build_menus()
+        self._connect()
+        self._refresh_state()
+        self.statusBar().showMessage(
+            "Bereit – PDF-Datei hierher ziehen oder „PDF öffnen“ wählen."
+        )
+
+    # ------------------------------------------------------------------
+    # Aufbau
+    # ------------------------------------------------------------------
+
+    def _build_ui(self) -> None:
+        central = QWidget()
+        root = QVBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        header = QWidget()
+        header.setObjectName("Header")
+        header.setFixedHeight(62)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(16, 8, 16, 8)
+        header_layout.setSpacing(11)
+
+        logo = QLabel()
+        logo.setPixmap(logo_pixmap(34))
+        logo.setFixedSize(34, 34)
+
+        titles = QVBoxLayout()
+        titles.setSpacing(0)
+        title = QLabel(APP_NAME)
+        title.setObjectName("AppTitle")
+        subtitle = QLabel(APP_TAGLINE)
+        subtitle.setObjectName("AppSubtitle")
+        titles.addWidget(title)
+        titles.addWidget(subtitle)
+
+        version = QLabel(f"v{APP_VERSION}")
+        version.setObjectName("VersionChip")
+
+        header_layout.addWidget(logo)
+        header_layout.addLayout(titles)
+        header_layout.addStretch(1)
+        header_layout.addWidget(version)
+        root.addWidget(header)
+
+        toolbar = QWidget()
+        toolbar.setObjectName("Toolbar")
+        toolbar.setFixedHeight(58)
+        bar = QHBoxLayout(toolbar)
+        bar.setContentsMargins(14, 9, 14, 9)
+        bar.setSpacing(8)
+
+        self.btn_open = QPushButton("PDF öffnen …")
+        self.btn_preview = QPushButton("Vorschau erzeugen")
+        self.btn_preview.setObjectName("Primary")
+        self.btn_save = QPushButton("Neu speichern unter …")
+        self.btn_preview.setToolTip(
+            "Sucht alle Daten und markiert sie farbig – die Datei wird noch nicht verändert."
+        )
+        self.btn_save.setToolTip("Schwärzt alle aktiven Treffer und speichert unter neuem Namen.")
+        for button in (self.btn_open, self.btn_preview, self.btn_save):
+            button.setCursor(Qt.PointingHandCursor)
+
+        bar.addWidget(self.btn_open)
+        bar.addWidget(self.btn_preview)
+        bar.addSpacing(2)
+        bar.addWidget(self.btn_save)
+        bar.addStretch(1)
+
+        self.btn_zoom_out = QToolButton()
+        self.btn_zoom_out.setText("\u2212")
+        self.btn_zoom_out.setToolTip("Verkleinern")
+        self.btn_zoom_in = QToolButton()
+        self.btn_zoom_in.setText("+")
+        self.btn_zoom_in.setToolTip("Vergrößern")
+        self.btn_zoom_fit = QToolButton()
+        self.btn_zoom_fit.setText("Anpassen")
+        self.btn_zoom_fit.setToolTip("Seitenbreite ins Fenster einpassen")
+        self.zoom_label = QLabel("100 %")
+        self.zoom_label.setObjectName("Hint")
+        self.zoom_label.setFixedWidth(52)
+        self.zoom_label.setAlignment(Qt.AlignCenter)
+
+        bar.addWidget(self.btn_zoom_out)
+        bar.addWidget(self.zoom_label)
+        bar.addWidget(self.btn_zoom_in)
+        bar.addWidget(self.btn_zoom_fit)
+        root.addWidget(toolbar)
+
+        self.controls = ControlsPanel()
+        self.controls.setMinimumWidth(310)
+        self.controls.setMaximumWidth(420)
+
+        self.dropzone = DropZone()
+        self.canvas = PdfCanvas()
+        self.scroll = QScrollArea()
+        self.scroll.setObjectName("PreviewScroll")
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.NoFrame)
+        self.scroll.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        self.scroll.setWidget(self.canvas)
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.dropzone)
+        self.stack.addWidget(self.scroll)
+
+        self.findings_panel = FindingsPanel()
+        self.findings_panel.setMinimumWidth(300)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        splitter.addWidget(self.controls)
+        splitter.addWidget(self.stack)
+        splitter.addWidget(self.findings_panel)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 0)
+        splitter.setSizes([344, 660, 380])
+        root.addWidget(splitter, 1)
+        self.setCentralWidget(central)
+
+        self.progress = QProgressBar()
+        self.progress.setFixedWidth(150)
+        self.progress.setTextVisible(False)
+        self.progress.hide()
+        self.page_label = QLabel("")
+        self.page_label.setObjectName("Hint")
+        self.statusBar().addPermanentWidget(self.progress)
+        self.statusBar().addPermanentWidget(self.page_label)
+
+    def _build_menus(self) -> None:
+        file_menu = self.menuBar().addMenu("&Datei")
+
+        open_action = QAction("PDF öffnen …", self)
+        open_action.setShortcut(QKeySequence.Open)
+        open_action.triggered.connect(self._choose_file)
+        file_menu.addAction(open_action)
+
+        save_action = QAction("Neu speichern unter …", self)
+        save_action.setShortcut(QKeySequence.Save)
+        save_action.triggered.connect(self._save_as)
+        file_menu.addAction(save_action)
+
+        file_menu.addSeparator()
+        quit_action = QAction("Beenden", self)
+        quit_action.setShortcut(QKeySequence.Quit)
+        quit_action.triggered.connect(self.close)
+        file_menu.addAction(quit_action)
+
+        view_menu = self.menuBar().addMenu("&Ansicht")
+        zoom_in = QAction("Vergrößern", self)
+        zoom_in.setShortcut(QKeySequence.ZoomIn)
+        zoom_in.triggered.connect(lambda: self._set_zoom(self.canvas.zoom * 1.15))
+        view_menu.addAction(zoom_in)
+        zoom_out = QAction("Verkleinern", self)
+        zoom_out.setShortcut(QKeySequence.ZoomOut)
+        zoom_out.triggered.connect(lambda: self._set_zoom(self.canvas.zoom / 1.15))
+        view_menu.addAction(zoom_out)
+        fit = QAction("An Fensterbreite anpassen", self)
+        fit.setShortcut(QKeySequence("Ctrl+0"))
+        fit.triggered.connect(self._fit_width)
+        view_menu.addAction(fit)
+
+        help_menu = self.menuBar().addMenu("&Hilfe")
+        guide = QAction("Anleitung", self)
+        guide.setShortcut(QKeySequence.HelpContents)
+        guide.triggered.connect(self._show_guide)
+        help_menu.addAction(guide)
+        about = QAction(f"Über {APP_NAME}", self)
+        about.triggered.connect(self._show_about)
+        help_menu.addAction(about)
+
+    def _connect(self) -> None:
+        self.btn_open.clicked.connect(self._choose_file)
+        self.btn_preview.clicked.connect(self._run_detection)
+        self.btn_save.clicked.connect(self._save_as)
+        self.btn_zoom_in.clicked.connect(lambda: self._set_zoom(self.canvas.zoom * 1.15))
+        self.btn_zoom_out.clicked.connect(lambda: self._set_zoom(self.canvas.zoom / 1.15))
+        self.btn_zoom_fit.clicked.connect(self._fit_width)
+
+        self.dropzone.browseRequested.connect(self._choose_file)
+        self.dropzone.fileDropped.connect(self.load_pdf)
+
+        self.canvas.regionDrawn.connect(self._add_manual_region)
+        self.canvas.findingActivated.connect(self._toggle_finding)
+        self.canvas.zoomRequested.connect(self._set_zoom)
+        self.canvas.ensureRequested.connect(self._ensure_visible)
+
+        self.findings_panel.enabledChanged.connect(self._set_finding_enabled)
+        self.findings_panel.findingSelected.connect(self._select_finding)
+        self.findings_panel.selectAllRequested.connect(self._set_all_enabled)
+        self.findings_panel.removeRequested.connect(self._remove_selected)
+
+        self.scroll.verticalScrollBar().valueChanged.connect(self._update_page_label)
+
+    # ------------------------------------------------------------------
+    # Datei laden
+    # ------------------------------------------------------------------
+
+    def open_path(self, path: str) -> None:
+        self.load_pdf(path)
+
+    def _choose_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "PDF öffnen", self._last_dir, "PDF-Dateien (*.pdf)"
+        )
+        if path:
+            self.load_pdf(path)
+
+    def load_pdf(self, path: str) -> None:
+        if self._busy:
+            return
+        password: str | None = None
+        try:
+            doc = open_document(path)
+        except PdfPasswordError:
+            entered, ok = QInputDialog.getText(
+                self,
+                "Passwortgeschützt",
+                f"Passwort für „{os.path.basename(path)}“:",
+                QLineEdit.Password,
+            )
+            if not ok or not entered:
+                return
+            try:
+                doc = open_document(path, entered)
+            except Exception as exc:  # noqa: BLE001
+                self._show_error(exc)
+                return
+            password = entered
+        except Exception as exc:  # noqa: BLE001
+            self._show_error(exc)
+            return
+
+        page_count = doc.page_count
+        doc.close()
+
+        try:
+            self.canvas.load(path, password)
+        except Exception as exc:  # noqa: BLE001
+            self._show_error(exc)
+            return
+
+        self._path = path
+        self._password = password
+        self._last_dir = os.path.dirname(path) or self._last_dir
+        self._findings = []
+        self._next_uid = 1
+        self.findings_panel.set_findings([])
+        self.canvas.set_findings([])
+        self.stack.setCurrentIndex(1)
+        self.setWindowTitle(f"{APP_NAME} {APP_VERSION} – {os.path.basename(path)}")
+        self.statusBar().showMessage(
+            f"{os.path.basename(path)} geladen · {page_count} Seite(n). "
+            "Jetzt „Vorschau erzeugen“."
+        )
+        self._fit_width()
+        QTimer.singleShot(0, self._fit_width)
+        self._update_page_label()
+        self._refresh_state()
+
+    def _show_error(self, exc: Exception) -> None:
+        QMessageBox.critical(
+            self, "Datei konnte nicht geöffnet werden", f"{exc}"
+        )
+
+    # ------------------------------------------------------------------
+    # Drag and Drop auf dem Fenster
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _pdf_from_event(event) -> str | None:
+        if not event.mimeData().hasUrls():
+            return None
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if path.lower().endswith(".pdf"):
+                return path
+        return None
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        if self._pdf_from_event(event) and not self._busy:
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        path = self._pdf_from_event(event)
+        if path:
+            event.acceptProposedAction()
+            self.load_pdf(path)
+
+    # ------------------------------------------------------------------
+    # Erkennung
+    # ------------------------------------------------------------------
+
+    def _run_detection(self) -> None:
+        if not self._path or self._busy:
+            return
+        try:
+            options = self.controls.read_options()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Regex-Ausdruck fehlerhaft", str(exc))
+            self.controls.focus_regex()
+            return
+        if options.is_empty():
+            QMessageBox.information(
+                self,
+                "Keine Erkennung ausgewählt",
+                "Bitte mindestens eine Erkennungsquelle aktivieren oder links Werte eingeben.",
+            )
+            return
+
+        self.controls.set_ai_hint("")
+        self._set_busy(True, "Erkennung läuft …")
+        self._worker = DetectionWorker(self._path, self._password, options)
+        self._worker.progressed.connect(self._on_progress)
+        self._worker.succeeded.connect(self._on_detection_done)
+        self._worker.failed.connect(self._on_detection_failed)
+        self._worker.finished.connect(self._on_worker_finished)
+        self._worker.start()
+
+    def _on_progress(self, index: int, total: int, message: str) -> None:
+        if total > 0:
+            self.progress.setRange(0, total)
+            self.progress.setValue(index)
+        self.statusBar().showMessage(message)
+
+    def _on_detection_done(self, result) -> None:
+        self._findings = list(result.findings)
+        self._next_uid = max((f.uid for f in self._findings), default=0) + 1
+        self._sync_findings()
+        self._set_busy(False)
+        if result.warnings:
+            QMessageBox.warning(self, "Hinweis zur Erkennung", "\n\n".join(result.warnings))
+        if not self._findings:
+            self.statusBar().showMessage(
+                "Keine Treffer gefunden – Werte links ergänzen und erneut suchen."
+            )
+        else:
+            active = sum(1 for f in self._findings if f.enabled)
+            self.statusBar().showMessage(
+                f"{len(self._findings)} Treffer markiert ({active} aktiv). "
+                "Prüfen, dann „Neu speichern unter …“."
+            )
+
+    def _on_detection_failed(self, message: str) -> None:
+        self._set_busy(False)
+        self.statusBar().showMessage("Erkennung fehlgeschlagen.")
+        QMessageBox.critical(self, "Erkennung fehlgeschlagen", message)
+
+    def _on_worker_finished(self) -> None:
+        self._worker = None
+        self._refresh_state()
+
+    def _set_busy(self, busy: bool, message: str = "") -> None:
+        self._busy = busy
+        self.progress.setVisible(busy)
+        if busy:
+            self.progress.setRange(0, 0)
+            if message:
+                self.statusBar().showMessage(message)
+        self._refresh_state()
+
+    # ------------------------------------------------------------------
+    # Treffer verwalten
+    # ------------------------------------------------------------------
+
+    def _sync_findings(self) -> None:
+        self._findings.sort(
+            key=lambda f: (
+                f.page,
+                f.rects[0][1] if f.rects else 0.0,
+                f.rects[0][0] if f.rects else 0.0,
+            )
+        )
+        self.canvas.set_findings(self._findings)
+        self.findings_panel.set_findings(self._findings)
+        self._refresh_state()
+
+    def _toggle_finding(self, uid: int) -> None:
+        for finding in self._findings:
+            if finding.uid == uid:
+                finding.enabled = not finding.enabled
+                self.canvas.set_selected(uid)
+                self.findings_panel.set_enabled_state(uid, finding.enabled)
+                self.findings_panel.update_counts(self._findings)
+                self.canvas.update()
+                self._refresh_state()
+                return
+
+    def _set_finding_enabled(self, uid: int, enabled: bool) -> None:
+        for finding in self._findings:
+            if finding.uid == uid:
+                finding.enabled = enabled
+                break
+        self.findings_panel.update_counts(self._findings)
+        self.canvas.update()
+        self._refresh_state()
+
+    def _select_finding(self, uid: int) -> None:
+        self.canvas.set_selected(uid)
+        self.canvas.scroll_to_finding(uid)
+
+    def _set_all_enabled(self, enabled: bool) -> None:
+        for finding in self._findings:
+            finding.enabled = enabled
+        self._sync_findings()
+
+    def _remove_selected(self) -> None:
+        uids = set(self.findings_panel.selected_uids())
+        if not uids:
+            QMessageBox.information(
+                self,
+                "Keine Auswahl",
+                "Bitte zuerst Zeilen in der Trefferliste markieren.",
+            )
+            return
+        self._findings = [f for f in self._findings if f.uid not in uids]
+        self._sync_findings()
+        self.statusBar().showMessage(f"{len(uids)} Treffer entfernt.")
+
+    def _add_manual_region(self, page: int, x0: float, y0: float, x1: float, y1: float) -> None:
+        finding = Finding(
+            text="Manuell markierter Bereich",
+            category=Category.MANUAL,
+            page=page,
+            rects=[(x0, y0, x1, y1)],
+            source="Manuell · Auswahl",
+            entity="MANUAL",
+            score=1.0,
+            enabled=True,
+            uid=self._next_uid,
+        )
+        self._next_uid += 1
+        self._findings.append(finding)
+        self._sync_findings()
+        self.canvas.set_selected(finding.uid)
+        self.findings_panel.select_uid(finding.uid)
+        self.statusBar().showMessage("Bereich manuell hinzugefügt.")
+
+    # ------------------------------------------------------------------
+    # Ansicht
+    # ------------------------------------------------------------------
+
+    def _set_zoom(self, zoom: float) -> None:
+        self.canvas.set_zoom(zoom)
+        self.zoom_label.setText(f"{round(self.canvas.zoom * 100)} %")
+
+    def _fit_width(self) -> None:
+        if not self._path:
+            return
+        width = self.canvas.page_width()
+        if width <= 0:
+            return
+        available = self.scroll.viewport().width() - 2 * PdfCanvas.MARGIN - 14
+        if available < 80:
+            return
+        self._set_zoom(available / width)
+
+    def _ensure_visible(self, rect: QRect) -> None:
+        self.scroll.ensureVisible(
+            rect.center().x(),
+            rect.center().y(),
+            max(40, rect.width() // 2),
+            max(40, rect.height() // 2),
+        )
+
+    def _update_page_label(self) -> None:
+        if not self._path or self.canvas.page_count == 0:
+            self.page_label.setText("")
+            return
+        y = self.scroll.verticalScrollBar().value() + self.scroll.viewport().height() / 3
+        page = self.canvas.page_at_y(y) + 1
+        self.page_label.setText(f"Seite {page} / {self.canvas.page_count}")
+
+    def _refresh_state(self) -> None:
+        has_doc = self._path is not None
+        active = sum(1 for finding in self._findings if finding.enabled)
+        self.btn_open.setEnabled(not self._busy)
+        self.btn_preview.setEnabled(has_doc and not self._busy)
+        self.btn_preview.setText(
+            "Vorschau erzeugen" if not self._findings else "Erkennung erneuern"
+        )
+        self.btn_save.setEnabled(has_doc and not self._busy and active > 0)
+        self.btn_save.setToolTip(
+            "Schwärzt alle aktiven Treffer und speichert unter neuem Namen."
+            if active
+            else "Noch keine aktiven Treffer."
+        )
+        for button in (
+            self.btn_zoom_in,
+            self.btn_zoom_out,
+            self.btn_zoom_fit,
+        ):
+            button.setEnabled(has_doc)
+        self.findings_panel.update_counts(self._findings)
+
+    # ------------------------------------------------------------------
+    # Speichern
+    # ------------------------------------------------------------------
+
+    def _save_as(self) -> None:
+        if not self._path or self._busy:
+            return
+        active = [finding for finding in self._findings if finding.enabled]
+        if not active:
+            QMessageBox.information(
+                self,
+                "Nichts zu schwärzen",
+                "Es sind keine aktiven Treffer markiert.",
+            )
+            return
+
+        base = os.path.splitext(os.path.basename(self._path))[0]
+        suggested = os.path.join(self._last_dir, f"{base}_geschwaerzt.pdf")
+        target, _ = QFileDialog.getSaveFileName(
+            self, "Neu speichern unter …", suggested, "PDF-Dateien (*.pdf)"
+        )
+        if not target:
+            return
+        if not target.lower().endswith(".pdf"):
+            target += ".pdf"
+
+        if os.path.abspath(target) == os.path.abspath(self._path):
+            answer = QMessageBox.question(
+                self,
+                "Originaldatei überschreiben?",
+                "Das Ziel ist die geöffnete Originaldatei.\n\n"
+                "Die Schwärzung kann nicht rückgängig gemacht werden. "
+                "Trotzdem überschreiben?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            count = apply_redactions(self._path, target, active, self._password)
+        except Exception as exc:  # noqa: BLE001
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(
+                self, "Speichern fehlgeschlagen", f"{type(exc).__name__}: {exc}"
+            )
+            return
+        QApplication.restoreOverrideCursor()
+
+        self._last_dir = os.path.dirname(target) or self._last_dir
+        self.statusBar().showMessage(f"{count} Stellen geschwärzt: {target}")
+        QMessageBox.information(
+            self,
+            "Gespeichert",
+            f"{count} Stellen wurden geschwärzt und in eine neue Datei geschrieben:\n\n"
+            f"{target}\n\nDie Originaldatei bleibt unverändert.",
+        )
+
+    # ------------------------------------------------------------------
+    # Hilfe
+    # ------------------------------------------------------------------
+
+    def _show_guide(self) -> None:
+        QMessageBox.information(
+            self,
+            "So funktioniert PDFblack",
+            "1. PDF-Datei hierher ziehen oder über „PDF öffnen …“ auswählen.\n\n"
+            "2. „Vorschau erzeugen“: Die Software sucht Namen, Adressen, PLZ/Ort, "
+            "Nummern, E-Mail, Telefon, IBAN und eigene Regexe. Gefundene Stellen "
+            "werden nur farbig markiert – die Datei bleibt unverändert.\n\n"
+            "3. Links Werte eintragen, die die KI nicht erkannt hat (Vorname, "
+            "Nachname, Adresse, PLZ, Ort, Personennummer) und erneut suchen: "
+            "diese Werte werden im zweiten Durchlauf gesucht.\n\n"
+            "4. Prüfen und überarbeiten: Klick auf eine Markierung schaltet sie "
+            "aus oder wieder ein, Ziehen mit der Maus fügt einen eigenen Bereich "
+            "hinzu, die Trefferliste rechts erlaubt Abwählen und Entfernen.\n\n"
+            "5. „Neu speichern unter …“ schreibt eine neue PDF-Datei, in der der "
+            "Text unter den Markierungen wirklich entfernt ist. Das Original "
+            "bleibt unverändert.",
+        )
+
+    def _show_about(self) -> None:
+        QMessageBox.about(
+            self,
+            f"Über {APP_NAME}",
+            f"<h3>{APP_NAME} {APP_VERSION}</h3>"
+            f"<p>{APP_TAGLINE}</p>"
+            "<p>Erkennung: Microsoft Presidio mit spaCy (MIT-Lizenz).<br>"
+            "PDF-Verarbeitung: PyMuPDF.<br>"
+            "Oberfläche: Qt für Python (PySide6).</p>"
+            "<p>Alle Schwärzungen werden beim Speichern physisch aus dem "
+            "Dokument entfernt und die Datei wird neu geschrieben.</p>",
+        )
+
+    # ------------------------------------------------------------------
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        if self._worker is not None:
+            answer = QMessageBox.question(
+                self,
+                "Erkennung läuft",
+                "Die Erkennung läuft noch. Abbrechen und PDFblack beenden?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                event.ignore()
+                return
+            self._worker.cancel()
+            self._worker.wait(3000)
+            self._worker = None
+        self.canvas.clear()
+        event.accept()
