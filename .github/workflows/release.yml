@@ -3,8 +3,8 @@ name: Installer bauen und ans Release hängen
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release-Tag zum Anhängen; leer lassen = nur bauen (Artefakt, noch kein Release)"
+      version:
+        description: "Version ohne v (z. B. 1.0.6): Installer bauen, danach Tag und Release anlegen. Leer = nur bauen."
         required: false
         default: ""
   push:
@@ -43,8 +43,7 @@ jobs:
       - name: Installer bauen und selbst testen
         run: powershell -ExecutionPolicy Bypass -File packaging/build_windows.ps1
 
-      - name: Installer als Artefakt ablegen (Bau vor dem Tag)
-        if: github.event_name == 'workflow_dispatch' && inputs.tag == ''
+      - name: Installer als Artefakt ablegen
         uses: actions/upload-artifact@v4
         with:
           name: PDFblack-Setup
@@ -52,26 +51,35 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      - name: An das Release anhängen
-        if: github.event_name == 'push' || inputs.tag != ''
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag || github.ref_name }}
-        run: |
-          $setup = Get-ChildItem dist/*Setup.exe | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $setup) { throw "Kein Setup-EXE gefunden" }
-          gh release upload $env:TAG $setup --clobber
-
-  notes:
-    name: Release-Notizen aktualisieren
-    if: github.event_name == 'push' || inputs.tag != ''
+  release:
+    name: Tag und Release (nach dem Installer)
     needs: [windows]
+    if: github.event_name == 'push' || inputs.version != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Notizen aus dem Repository setzen
+
+      - name: Fertigen Installer holen
+        uses: actions/download-artifact@v4
+        with:
+          name: PDFblack-Setup
+          path: dist
+
+      - name: Tag und Release anlegen, Installer anhängen
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag || github.ref_name }}
-        run: gh release edit "$TAG" --notes-file docs/release-notes.md
+          INPUT_VERSION: ${{ inputs.version }}
+          TAG_REF: ${{ github.ref_name }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION}" ]; then TAG="v${INPUT_VERSION}"; else TAG="${TAG_REF}"; fi
+          echo "Tag: ${TAG}"
+          if ! gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release create "${TAG}" \
+              --title "PDFblack ${TAG#v}" \
+              --target "${HEAD_SHA}" \
+              --notes-file docs/release-notes.md
+          fi
+          gh release upload "${TAG}" dist/*Setup.exe --clobber
+          gh release edit "${TAG}" --notes-file docs/release-notes.md

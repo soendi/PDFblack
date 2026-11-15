@@ -160,26 +160,38 @@ def test_einbau_ausserhalb_von_windows(tmp_path):
     assert "Windows" in result.message
 
 
-def test_einbau_wartet_und_startet_neu(tmp_path):
-    archive = tmp_path / "PDFblack-1.0.5-Setup.exe"
-    exe = "C:\\Program Files\\PDFblack\\PDFblack.exe"
-    command = updater.install_command(archive, [exe])
+def test_einbau_startet_das_setup_still(monkeypatch, tmp_path):
+    archive = tmp_path / "PDFblack-1.0.6-Setup.exe"
+    archive.write_bytes(b"MZ")
+    aufrufe: list[list[str]] = []
 
-    # Setup still, ohne Inno-eigenen Neustart ...
-    assert "/SILENT" in command and "/CLOSEAPPLICATIONS" in command
-    assert "/RESTARTAPPLICATIONS" not in command
-    # ... auf dessen Ende warten und danach PDFblack wieder starten.
-    assert "/wait" in command
-    assert f'"{archive}"' in command
-    assert command.index(f'"{archive}"') < command.index("&&") < command.index(f'"{exe}"')
-    assert command.rstrip().endswith(f'"{exe}"')
+    class _Popen:
+        def __init__(self, args, **kwargs) -> None:
+            aufrufe.append(list(args))
+
+    monkeypatch.setattr(updater.subprocess, "Popen", _Popen)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+
+    result = updater.install(archive)
+
+    assert result.ok
+    assert "selbst wieder" in result.message
+    assert aufrufe == [[str(archive), "/SILENT", "/NORESTART", "/CLOSEAPPLICATIONS"]]
 
 
-def test_neustart_nutzt_das_eigene_programm(monkeypatch):
-    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(updater.sys, "executable", "C:\\Apps\\PDFblack.exe")
-    assert updater.relaunch_target() == ["C:\\Apps\\PDFblack.exe"]
-
-    monkeypatch.setattr(updater.sys, "frozen", False, raising=False)
-    monkeypatch.setattr(updater.sys, "executable", "C:\\Python\\python.exe")
-    assert updater.relaunch_target()[-2:] == ["-m", "pdfblack"]
+def test_installer_startet_das_programm_nach_dem_einbau():
+    skript = Path(__file__).resolve().parents[1] / "packaging" / "installer.iss"
+    zeilen = [
+        zeile
+        for zeile in skript.read_text(encoding="utf-8").splitlines()
+        if zeile.startswith("Filename: ")
+    ]
+    assert len(zeilen) == 1, zeilen
+    eintrag = zeilen[0]
+    text = skript.read_text(encoding="utf-8")
+    assert '#define AppExe "PDFblack.exe"' in text
+    assert "{app}\\{#AppExe}" in eintrag
+    # nowait: PDFblack laeuft weiter, waehrend das Setup endet.
+    assert "nowait" in eintrag
+    # skipifsilent wuerde beim stillen Update genau den Neustart verhindern.
+    assert "skipifsilent" not in eintrag

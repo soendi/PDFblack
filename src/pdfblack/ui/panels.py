@@ -692,9 +692,11 @@ class FindingsPanel(QFrame):
             top = QTreeWidgetItem(
                 [f"{CATEGORY_GROUPS.get(category, category.value)} ({len(items)})"]
             )
-            # ItemIsAutoTristate: Qt haelt den Gruppenhaken und schaltet beim
-            # Klick alle Kinder mit um.
-            top.setFlags(top.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate)
+            # Kein ItemIsAutoTristate: Qt wuerde beim Umschalten eines einzelnen
+            # Eintrags den Gruppenhaken nachziehen und unser itemChanged fuer den
+            # Kopf wieder alle Kinder ueberschreiben. Der Zustand wird deshalb
+            # selbst aus den Kindern berechnet.
+            top.setFlags(top.flags() | Qt.ItemIsUserCheckable)
             top.setForeground(0, QColor(category.color))
             self.category_tree.addTopLevelItem(top)
             for finding in items:
@@ -707,19 +709,36 @@ class FindingsPanel(QFrame):
                 child.setCheckState(0, Qt.Checked if finding.enabled else Qt.Unchecked)
                 top.addChild(child)
             top.setExpanded(True)
-            checked = sum(1 for finding in items if finding.enabled)
-            if checked == 0:
-                top.setCheckState(0, Qt.Unchecked)
-            elif checked == len(items):
-                top.setCheckState(0, Qt.Checked)
-            else:
-                top.setCheckState(0, Qt.PartiallyChecked)
+            self._apply_group_state(top)
 
         self.category_tree.blockSignals(False)
         self._updating = False
         self.category_tree.setVisible(bool(findings))
         self.group_label.setVisible(bool(findings))
         self.group_hint.setVisible(bool(findings))
+
+    @staticmethod
+    def _apply_group_state(top: QTreeWidgetItem) -> None:
+        """Gruppenhaken aus den Kindern ableiten (Signale sperrt der Aufrufer)."""
+        total = top.childCount()
+        if not total:
+            return
+        checked = sum(
+            1 for index in range(total) if top.child(index).checkState(0) == Qt.Checked
+        )
+        if checked == 0:
+            state = Qt.Unchecked
+        elif checked == total:
+            state = Qt.Checked
+        else:
+            state = Qt.PartiallyChecked
+        if top.checkState(0) != state:
+            top.setCheckState(0, state)
+
+    def _sync_group_state(self, top: QTreeWidgetItem) -> None:
+        self.category_tree.blockSignals(True)
+        self._apply_group_state(top)
+        self.category_tree.blockSignals(False)
 
     def update_counts(self, findings: list[Finding]) -> None:
         active = sum(1 for finding in findings if finding.enabled)
@@ -742,6 +761,7 @@ class FindingsPanel(QFrame):
                 if child.data(0, Qt.UserRole) == uid:
                     child.setCheckState(0, Qt.Checked if enabled else Qt.Unchecked)
                     break
+            self._apply_group_state(top)
         self.category_tree.blockSignals(False)
         self._updating = False
 
@@ -796,6 +816,9 @@ class FindingsPanel(QFrame):
                     self.enabledChanged.emit(child_uid, enabled)
             return
         self.enabledChanged.emit(uid, item.checkState(0) == Qt.Checked)
+        parent = item.parent()
+        if parent is not None:
+            self._sync_group_state(parent)
 
     def _on_group_clicked(self, item: QTreeWidgetItem, column: int) -> None:
         uid = item.data(0, Qt.UserRole)

@@ -1,9 +1,9 @@
 """Selbstaktualisierung ueber die GitHub-Releases von PDFblack.
 
 Die Pruefung und der Download laufen ohne Zusatzbibliothek ueber urllib. Der
-Einbau ist auf Windows beschraenkt. Das Setup laeuft still; ein kleiner
-cmd-Aufruf wartet auf dessen Ende und startet PDFblack danach wieder - Inno
-Setups eigener Neustart greift bei PyInstaller-Anwendungen nicht.
+Einbau ist auf Windows beschraenkt: das Setup laeuft still, schliesst die
+laufende Anwendung und startet sie ueber seinen [Run]-Eintrag wieder - dafuer
+darf beim Setup kein skipifsilent stehen.
 """
 
 from __future__ import annotations
@@ -220,23 +220,6 @@ def can_install() -> bool:
     return sys.platform.startswith("win") and bool(getattr(sys, "frozen", False))
 
 
-def relaunch_target() -> list[str]:
-    """Aufruf, mit dem sich PDFblack selbst wieder startet."""
-    if getattr(sys, "frozen", False):
-        return [sys.executable]
-    return [sys.executable, "-m", "pdfblack"]
-
-
-def install_command(
-    archive: Path, target: list[str] | None = None
-) -> str:
-    """cmd-Zeile: Setup still einspielen, auf das Ende warten, dann neu starten."""
-    target = target or relaunch_target()
-    parts = ["start", '""', "/wait", f'"{archive}"', *INSTALL_FLAGS, "&&", "start", '""']
-    parts.extend(f'"{item}"' for item in target)
-    return " ".join(parts)
-
-
 def install(archive: Path) -> InstallResult:
     """Heruntergeladenes Setup-Programm still starten."""
     if not archive.exists():
@@ -254,15 +237,14 @@ def install(archive: Path) -> InstallResult:
     )
     try:
         subprocess.Popen(  # noqa: S603 - feste Argumentliste, eigene Datei
-            ["cmd.exe", "/c", install_command(archive)],
+            [str(archive), *INSTALL_FLAGS],
             close_fds=True,
             creationflags=flags,
-            cwd=str(archive.parent),
         )
     except OSError as exc:
         return InstallResult(False, f"Der Installer liess sich nicht starten: {exc}")
     return InstallResult(
         True,
-        "Das Update wird im Hintergrund eingespielt, PDFblack startet danach "
-        "von selbst neu.",
+        "Das Update wird im Hintergrund eingespielt, PDFblack oeffnet sich "
+        "danach von selbst wieder.",
     )

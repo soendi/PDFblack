@@ -1,10 +1,13 @@
-## PDFblack 1.0.5
+## PDFblack 1.0.6
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
-### Neu in 1.0.5
+### Neu in 1.0.6
 
-- **Neustart nach dem Update:** Wird eine neue Fassung im Hintergrund eingespielt, öffnet sich PDFblack nach der Installation von selbst wieder – bisher musste das Programm nach dem stillen Update von Hand gestartet werden.
+- **Einzelne Häkchen in der Kategorie-Übersicht:** In der unteren Sektion lässt sich jetzt jeder einzelne Eintrag an- und abhaken; der Haken der Überschrift folgt automatisch (alle an = Haken, alle aus = leer, gemischt = Strich). Bisher hat das Umschalten eines einzelnen Eintrags die ganze Gruppe wieder eingeschaltet.
+- **Neustart nach dem Update:** Der Installer öffnet PDFblack nach dem Einbau selbst – auch beim stillen Update. Der Start-Eintrag im Setup war bisher auf sichtbare Installationen beschränkt.
+
+### Neu in 1.0.5
 
 - **Doppelklick schwärzt Wörter:** Ein Doppelklick auf ein Wort im PDF nimmt genau dieses Wort als Schwärzung auf (Kategorie „Manuell“, Quelle „Doppelklick“) – so schnell wie ein darum gezogener Rahmen. Ein zweiter Doppelklick auf dasselbe Wort legt keinen doppelten Treffer an, Einzelklicks schalten Treffer weiterhin ein und aus.
 
@@ -33,7 +36,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.5-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.6-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 

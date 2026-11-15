@@ -1,9 +1,9 @@
 ; Inno-Setup-Skript fuer den Windows-Installer von PDFblack.
-; Build: ISCC.exe /DAppVersion=1.0.5 packaging\installer.iss
+; Build: ISCC.exe /DAppVersion=1.0.6 packaging\installer.iss
 ; Erwartet das PyInstaller-Ergebnis in dist\PDFblack (siehe build_windows.ps1).
 
 #ifndef AppVersion
-  #define AppVersion "1.0.5"
+  #define AppVersion "1.0.6"
 #endif
 
 #define AppName "PDFblack"
@@ -50,4 +50,5 @@ Name: "{group}\{#AppName} deinstallieren"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; Ohne skipifsilent: auch das stille Update oeffnet PDFblack nach dem Einbau wieder.
+Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait
