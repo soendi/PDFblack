@@ -55,10 +55,8 @@ def test_dateiauswahl_fuer_betriebssystem():
         "PDFblack-1.0.1-Setup.exe",
         "https://example.org/setup",
     )
-    assert updater.asset_for(release, "linux") == (
-        "PDFblack-1.0.1-linux-x86_64.tar.gz",
-        "https://example.org/tar",
-    )
+    # Die Software laeuft nur unter Windows.
+    assert updater.asset_for(release, "linux") is None
     assert updater.asset_for(release, "darwin") is None
 
 
@@ -133,10 +131,7 @@ def test_feed_als_ausweichweg(monkeypatch):
     assert release.tag == "v1.2.0"
     assert release.page.endswith("/releases/tag/v1.2.0")
     assert updater.asset_for(release, "win32")[0] == "PDFblack-1.2.0-Setup.exe"
-    assert (
-        updater.asset_for(release, "linux")[0]
-        == "PDFblack-1.2.0-linux-x86_64.tar.gz"
-    )
+    assert updater.asset_for(release, "linux") is None
 
 
 def test_download_schreibt_datei(monkeypatch, tmp_path):
@@ -154,49 +149,12 @@ def test_download_schreibt_datei(monkeypatch, tmp_path):
     assert gesehen[-1] == (5000, 5000)
 
 
-def test_archiv_ersetzt_programmverzeichnis(tmp_path):
-    """Das Hilfsskript tauscht den Inhalt aus und startet die App neu."""
-    import os
-    import subprocess
-    import tarfile
-
-    if not updater.sys.platform.startswith("linux"):
+def test_einbau_ausserhalb_von_windows(tmp_path):
+    if updater.sys.platform.startswith("win"):
         pytest.skip("plattformspezifisch")
-
-    app = tmp_path / "PDFblack"
-    app.mkdir()
-    starter = app / "PDFblack"
-    starter.write_text('#!/bin/sh\ntouch "$(dirname "$0")/gestartet"\n', encoding="utf-8")
-    starter.chmod(0o755)
-    (app / "alt.txt").write_text("alt", encoding="utf-8")
-
-    quelle = tmp_path / "quelle" / "PDFblack"
-    quelle.mkdir(parents=True)
-    (quelle / "neu.txt").write_text("neu", encoding="utf-8")
-    download = tmp_path / "download"
-    download.mkdir()
-    archiv = download / "PDFblack-1.0.1-linux-x86_64.tar.gz"
-    with tarfile.open(archiv, "w:gz") as tar:
-        tar.add(quelle, arcname="PDFblack")
-
-    # PID eines sicher beendeten Prozesses: das Skript wartet nicht.
-    skript = updater._swap_script(archiv, app, pid=999_999)
-    subprocess.run(["/bin/sh", str(skript)], timeout=120, check=True)
-
-    assert (app / "neu.txt").read_text(encoding="utf-8") == "neu"
-    assert (app / "alt.txt").exists()
-    assert (app / "gestartet").exists()
-    assert not archiv.exists()
-    assert os.access(app / "PDFblack", os.X_OK)
-
-
-def test_einbau_ausserhalb_einer_installation(tmp_path):
-    if not updater.sys.platform.startswith("linux"):
-        pytest.skip("plattformspezifisch")
-    assert updater.installation_dir() is None
     assert not updater.can_install()
-    paket = tmp_path / "PDFblack_1.0.1_amd64.deb"
-    paket.write_bytes(b"deb")
+    paket = tmp_path / "PDFblack-1.0.1-Setup.exe"
+    paket.write_bytes(b"exe")
     result = updater.install(paket)
     assert not result.ok
-    assert "apt" in result.message
+    assert "Windows" in result.message

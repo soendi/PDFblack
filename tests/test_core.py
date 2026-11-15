@@ -124,6 +124,47 @@ def test_schwaerzen_entfernt_text(sample, tmp_path):
     assert "4711-2233" in pymupdf.open(str(sample))[0].get_text()
 
 
+def test_hausnummer_hinter_strassennamen(tmp_path):
+    """Hausnummern auch ohne deutsches Strassen-Suffix, ohne Zahlen-Fehler."""
+    path = tmp_path / "nr.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    lines = [
+        "Rue du Lac 12",
+        "Unter den Linden 5a",
+        "Hafenpromenade 3 a",
+        "Am Markt 7",
+        "Seite 12 der Anlage",
+        "Kapitel 3 und 4",
+        "Insgesamt 250 Stück",
+        "Durchwahl 089",
+        "Ihre Police 44-778 gilt ab morgen",
+        "Sie 1'250.00 CHF offen",
+    ]
+    for index, line in enumerate(lines):
+        page.insert_text((60, 100 + index * 20), line, fontsize=11, fontname="helv")
+    doc.save(str(path))
+    doc.close()
+
+    result = run_detection(
+        str(path), DetectionOptions(use_ai=False, ai_entities=(), rule_groups=("address",))
+    )
+    found = texts(result.findings)
+    assert "Rue du Lac 12" in found
+    assert "Unter den Linden 5a" in found
+    assert "Hafenpromenade 3 a" in found
+    assert "Am Markt 7" in found
+    # Zahlen hinter Schluesselwoertern sind keine Hausnummern
+    assert not any("Seite" in item for item in found)
+    assert not any("Kapitel" in item for item in found)
+    assert not any("Insgesamt" in item for item in found)
+    assert not any("Durchwahl" in item for item in found)
+    assert not any("Police" in item for item in found)
+    assert not any("Sie 1" in item for item in found)
+    # Keine doppelten Treffer fuer dieselbe Stelle
+    assert len(found) == len(set(found))
+
+
 def test_schweizer_plz(tmp_path):
     """Vierstellige PLZ mit CH-Praefix und mit Ort dahinter."""
     path = tmp_path / "ch.pdf"

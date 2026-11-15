@@ -4,6 +4,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Neu in 1.0.1
 
+- **Hausnummern:** die Nummer hinter dem Straßennamen wird auch dann geschwärzt, wenn die Straße kein deutsches Suffix hat („Rue du Lac 12“, „Unter den Linden 5a“). Erkannt werden Zahl (`12`), Zahl mit Leerzeichen und Buchstabe (`12 a`) und Zahl mit Buchstabe ohne Abstand (`12a`).
 - **Schweizer Postleitzahlen:** vierstellige PLZ mit Präfix (`CH-8045`, `CH 3000 Bern`) und mit nachgestelltem Ort (`8045 Zürich`, `CH-1814 La Tour-de-Peilz`). Beträge, Mengen und Zeiteinheiten gelten nicht als Ort – „1500 Franken" bleibt stehen. Eigener Schalter in der automatischen Erkennung.
 - **Automatische Updates:** PDFblack prüft beim Start im Hintergrund, ob eine neue Version bereitsteht, lädt sie und spielt sie ohne Assistent ein. Von Hand über **Hilfe → Nach Updates suchen …**.
 - **Gemerkte Einstellungen:** die Häkchen der automatischen Erkennung und die Empfindlichkeit gelten beim nächsten Start weiter.
@@ -23,18 +24,9 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-**Windows:** `PDFblack-1.0.1-Setup.exe` herunterladen und ausführen (Installer, kein Administrator- oder Python-Zubehör nötig).
-
-**Linux (Debian/Ubuntu):**
-
-```bash
-sudo apt install ./PDFblack_1.0.1_amd64.deb
-pdfblack
-```
-
-Alternativ das Archiv `PDFblack-1.0.1-linux-x86_64.tar.gz` entpacken und `PDFblack/PDFblack` starten. Dieses Archiv kann sich ab 1.0.1 selbst aktualisieren.
-
-**macOS:** aus dem Quellcode mit `bash packaging/build_macos.sh` bauen.
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.1-Setup.exe`
+herunterladen und ausführen (Installer, kein Administrator- oder
+Python-Zubehör nötig).
 
 ### Geprüft
 

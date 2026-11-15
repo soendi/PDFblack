@@ -96,12 +96,10 @@ eine neuere Version steht, lädt sie und spielt sie ein – ohne Assistent und
 ohne Rückfrage. Von Hand geht das über **Hilfe → Nach Updates suchen …**; dort
 meldet die Anwendung auch, wenn die installierte Version die aktuelle ist.
 
-| Installation | Verhalten beim Update |
-| --- | --- |
-| Windows (Setup) | Das Setup läuft still, PDFblack wird geschlossen, ersetzt und neu gestartet. Windows kann dabei einmal die Sicherheitsabfrage (UAC) zeigen. |
-| Linux (Archiv `.tar.gz`) | Ein Hilfsskript wartet, bis PDFblack beendet ist, ersetzt das Programmverzeichnis und startet die Anwendung neu. |
-| Linux (`.deb`) | `/opt` ist geschützt, daher wird nichts ersetzt; die neue Fassung kommt über `sudo apt install ./PDFblack_<version>_amd64.deb`. |
-| Quellcode-Installation | Kein Einbau, nur der Hinweis auf die neue Version. |
+Das Update ist für die Windows-Fassung gedacht: Das Setup-Programm läuft
+still, PDFblack wird geschlossen, ersetzt und neu gestartet. Windows kann dabei
+einmal die Sicherheitsabfrage (UAC) zeigen. Eine Quellcode-Installation wird
+nicht angetastet – sie bekommt nur den Hinweis auf die neue Version.
 
 Abschalten: `pdfblack --no-update` oder die Umgebungsvariable
 `PDFBLACK_NO_UPDATE=1`. Ein anderes Repository lässt sich mit
@@ -123,14 +121,6 @@ Abschalten: `pdfblack --no-update` oder die Umgebungsvariable
 ## Installer bauen
 
 Alle Varianten setzen eine virtuelle Umgebung mit den Abhängigkeiten voraus.
-
-**Linux (.deb + tar.gz)**
-
-```bash
-bash packaging/build_linux.sh
-# Ergebnis: dist/PDFblack_1.0.1_amd64.deb, dist/PDFblack-1.0.1-linux-x86_64.tar.gz
-sudo apt install ./dist/PDFblack_1.0.1_amd64.deb
-```
 
 **Windows (Setup-EXE)**
 
@@ -168,7 +158,7 @@ src/pdfblack/
   core/redact.py    physisches Schwärzen und Neuschreiben der Datei
   ui/               Oberfläche (Qt), Canvas mit Markierungen, Panels
 tools/              Beispiel-PDF und Headless-Vorschau
-packaging/          PyInstaller, .deb, Inno Setup, macOS
+packaging/          PyInstaller, Inno Setup (Windows), macOS
 tests/              Tests für Erkennung und Schwärzung
 ```
 

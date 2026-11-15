@@ -1,14 +1,9 @@
 """Selbstaktualisierung ueber die GitHub-Releases von PDFblack.
 
 Die Pruefung und der Download laufen ohne Zusatzbibliothek ueber urllib. Der
-Einbau ist plattformabhaengig:
-
-* Windows: das Setup-Programm wird still gestartet (Inno Setup schliesst die
-  laufende Anwendung und startet sie nach dem Update neu).
-* Linux: ein Archiv (.tar.gz) ersetzt das Programmverzeichnis, sobald PDFblack
-  beendet ist, und startet die Anwendung neu. Liegt die Installation unter
-  /usr (Debian-Paket) und ist damit nicht beschreibbar, wird nichts veraendert;
-  dann bleibt der Weg ueber die Paketverwaltung.
+Einbau ist auf Windows beschraenkt: das Setup-Programm wird still gestartet
+(Inno Setup schliesst die laufende Anwendung und startet sie nach dem Update
+neu).
 """
 
 from __future__ import annotations
@@ -17,10 +12,8 @@ import json
 import logging
 import os
 import re
-import shlex
 import subprocess
 import sys
-import tempfile
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -67,14 +60,10 @@ def feed_url() -> str:
 
 
 def _conventional_assets(tag: str, version: str) -> dict[str, str]:
-    """Dateinamen, die der Release-Workflow erzeugt."""
+    """Dateiname, den der Release-Workflow erzeugt."""
     base = f"https://github.com/{repository()}/releases/download/{tag}"
-    names = (
-        f"PDFblack-{version}-Setup.exe",
-        f"PDFblack_{version}_amd64.deb",
-        f"PDFblack-{version}-linux-x86_64.tar.gz",
-    )
-    return {name: f"{base}/{name}" for name in names}
+    name = f"PDFblack-{version}-Setup.exe"
+    return {name: f"{base}/{name}"}
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +134,7 @@ def fetch_latest(timeout: float = 8.0, url: str | None = None) -> Release | None
 
 
 def _fetch_feed(timeout: float = 8.0) -> Release | None:
-    """Ausweichweg: Release-Feed ohne API-Kontingent (Dateinamen nach Schema)."""
+    """Ausweichweg: Release-Feed ohne API-Kontingent (Dateiname nach Schema)."""
     request = urllib.request.Request(feed_url(), headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -206,20 +195,16 @@ def download(
 
 
 def asset_for(release: Release, system: str | None = None) -> tuple[str, str] | None:
-    """Passende Datei fuer dieses Betriebssystem: (Dateiname, Adresse)."""
+    """Windows-Setup fuer diese Version: (Dateiname, Adresse)."""
     system = (system or sys.platform).lower()
-    names = sorted(release.assets)
-
-    def pick(suffix: str) -> tuple[str, str] | None:
-        for name in names:
-            if name.lower().endswith(suffix):
-                return name, release.assets[name]
+    if not system.startswith("win"):
         return None
-
-    if system.startswith("win"):
-        return pick("-setup.exe") or pick(".exe")
-    if system.startswith("linux"):
-        return pick(".tar.gz") or pick(".deb")
+    for name in sorted(release.assets):
+        if name.lower().endswith("-setup.exe"):
+            return name, release.assets[name]
+    for name in sorted(release.assets):
+        if name.lower().endswith(".exe"):
+            return name, release.assets[name]
     return None
 
 
@@ -228,58 +213,23 @@ def asset_for(release: Release, system: str | None = None) -> tuple[str, str] | 
 # ---------------------------------------------------------------------------
 
 
-def installation_dir() -> Path | None:
-    """Programmverzeichnis einer gepackten Installation, sonst None."""
-    if not getattr(sys, "frozen", False):
-        return None
-    return Path(sys.executable).resolve().parent
-
-
 def can_install() -> bool:
     """Kann diese Installation sich selbst ersetzen?"""
-    if sys.platform.startswith("win"):
-        return getattr(sys, "frozen", False)
-    directory = installation_dir()
-    return directory is not None and os.access(directory, os.W_OK)
-
-
-def _swap_script(archive: Path, app_dir: Path, pid: int | None = None) -> Path:
-    """Hilfsskript: wartet auf das Ende von PDFblack, ersetzt, startet neu."""
-    stage = Path(tempfile.mkdtemp(prefix="pdfblack-stage-"))
-    script = stage / "update.sh"
-    script.write_text(
-        "#!/bin/sh\n"
-        "set -e\n"
-        f"APP={shlex.quote(str(app_dir))}\n"
-        f"ARCHIVE={shlex.quote(str(archive))}\n"
-        f"STAGE={shlex.quote(str(stage))}/entpackt\n"
-        f"while kill -0 {os.getpid() if pid is None else pid} 2>/dev/null; do sleep 0.5; done\n"
-        'mkdir -p "$STAGE"\n'
-        'tar -xzf "$ARCHIVE" -C "$STAGE"\n'
-        'SRC="$STAGE/PDFblack"\n'
-        '[ -d "$SRC" ] || SRC="$(find "$STAGE" -mindepth 1 -maxdepth 1 -type d | head -n 1)"\n'
-        '[ -d "$SRC" ] || exit 1\n'
-        'cp -a "$SRC/." "$APP/"\n'
-        f'rm -rf {shlex.quote(str(stage))} {shlex.quote(str(archive.parent))}\n'
-        'exec "$APP/PDFblack"\n',
-        encoding="utf-8",
-    )
-    script.chmod(0o755)
-    return script
+    return sys.platform.startswith("win") and bool(getattr(sys, "frozen", False))
 
 
 def install(archive: Path) -> InstallResult:
-    """Heruntergeladene Datei einspielen."""
+    """Heruntergeladenes Setup-Programm still starten."""
     if not archive.exists():
         return InstallResult(False, "Die heruntergeladene Datei fehlt.")
-    if sys.platform.startswith("win"):
-        return _install_windows(archive)
-    return _install_linux(archive)
-
-
-def _install_windows(archive: Path) -> InstallResult:
+    if not sys.platform.startswith("win"):
+        return InstallResult(
+            False,
+            "Automatische Updates gibt es nur fuer die Windows-Fassung. "
+            "Bitte die neue Version von der Release-Seite installieren.",
+        )
     if not archive.name.lower().endswith(".exe"):
-        return InstallResult(False, "Fuer Windows wird das Setup-Programm benoetigt.")
+        return InstallResult(False, "Fuer das Update wird das Setup-Programm benoetigt.")
     flags = ["/SILENT", "/NORESTART", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"]
     try:
         subprocess.Popen(  # noqa: S603 - feste Argumentliste, eigene Datei
@@ -292,33 +242,4 @@ def _install_windows(archive: Path) -> InstallResult:
     return InstallResult(
         True,
         "Das Update wird im Hintergrund eingespielt, PDFblack startet dabei neu.",
-    )
-
-
-def _install_linux(archive: Path) -> InstallResult:
-    app_dir = installation_dir()
-    if not archive.name.endswith(".tar.gz"):
-        return InstallResult(
-            False,
-            "Diese Datei muss von Hand installiert werden "
-            f"(z. B. sudo apt install ./{archive.name}).",
-        )
-    if app_dir is None or not os.access(app_dir, os.W_OK):
-        return InstallResult(
-            False,
-            "Dieses PDFblack liegt in einem geschuetzten Verzeichnis und kann sich "
-            "nicht selbst ersetzen. Bitte die neue Version ueber die "
-            "Paketverwaltung oder von der Release-Seite installieren.",
-        )
-    try:
-        script = _swap_script(archive, app_dir)
-        subprocess.Popen(  # noqa: S603 - eigenes Skript mit festen Argumenten
-            ["/bin/sh", str(script)],
-            close_fds=True,
-            start_new_session=True,
-        )
-    except OSError as exc:
-        return InstallResult(False, f"Das Update liess sich nicht starten: {exc}")
-    return InstallResult(
-        True, "PDFblack wird ersetzt und gleich neu gestartet."
     )

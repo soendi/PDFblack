@@ -36,6 +36,33 @@ _STREET_SUFFIX = (
 _STREET_WORD = rf"[A-Z\u00c4\u00d6\u00dc][\w\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df.\-']*{_STREET_SUFFIX}"
 _HOUSE_NO = r"\d{1,4}\s?[a-zA-Z]?(?:[-/]\d{1,4})?"
 
+# Hausnummer hinter einem Strassennamen ohne deutsches Suffix
+# ("Rue du Lac 12", "Unter den Linden 5", "Hafenpromenade 3a").
+_HOUSE_NO_SHORT = r"\d{1,3}(?:[ \t]?[a-zA-Z])?(?:[ \t]?[-/][ \t]?\d{1,2})?"
+_HOUSE_NO_STOP = (
+    "insgesamt|gesamt|summe|betrag|saldo|total|netto|brutto|umsatz|mwst|steuer|"
+    "durchwahl|abteilung|postfach|postleitzahl|plz|betreff|betrifft|police|unsere|"
+    "unser|ihre|ihren|ihrem|wir|sie|uns|mich|dich|man|alle|jede|jeder|diese|dieser|"
+    "seite|seiten|kapitel|artikel|position|anzahl|menge|stueck|stück|exemplare|"
+    "pakete|paket|jahre|jahr|monate|monat|tage|tag|stunden|stunde|minuten|minute|"
+    "uhr|prozent|rabatt|preis|stand|version|fassung|nummer|nr|zeile|zeilen|absatz|"
+    "anlage|anlagen|punkt|punkte|rate|raten|posten|lieferung|sendung|eingang|"
+    "ausgang|etage|zimmer|wohnung|telefon|tel|fax|mobil|kunden|kunde|rechnung|"
+    "rechnungen|bestellung|bestellungen|auftrag|auftraege|aufträge|mitarbeiter|"
+    "personen|kinder|erwachsene|gewicht|groesse|größe|breite|hoehe|höhe|laenge|"
+    "länge|baujahr|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|"
+    "januar|februar|maerz|märz|april|mai|juni|juli|august|september|oktober|"
+    "november|dezember"
+)
+# Strassenname: ein Wort mit Grossbuchstaben, danach bis zu drei weitere Wörter
+# oder kleine Verbindungswörter (Rue du Lac, Unter den Linden).
+_HOUSE_STREET = (
+    r"[A-Z\u00c4\u00d6\u00dc][A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df.\-']{2,}"
+    r"(?:[ \t]+(?:[A-Z\u00c4\u00d6\u00dc][A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df.\-']+|"
+    r"(?i:du|de|la|le|des|der|den|dem|am|an|auf|im|in|vor|unter|auf|op|van|von|"
+    r"sur|sous|aux|zum|zur|bei|beim|ob|ueber|über))){0,3}"
+)
+
 _PLZ = r"(?:0[1-9]|[1-9]\d)\d{3}"
 _CITY_PART = r"[\w\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df.\-]*"
 _PLZ_PREFIXES = "am|an|auf|bei|im|in|ob|ueber|unter|vor|der|dem|den|zur|zum"
@@ -85,6 +112,19 @@ RULES: tuple[Rule, ...] = (
         pattern=(
             rf"(?<!\w)(?:Am|An|Auf|Beim|Hinter|Im|In|Unter|Vor|Zum|Zur)[ \t]+"
             rf"(?:dem|der|den)?[ \t]*[A-Z\u00c4\u00d6\u00dc]{_CITY_PART}[ \t]+{_HOUSE_NO}(?!\w)"
+        ),
+    ),
+    Rule(
+        key="house_number",
+        label="Hausnummer",
+        group="address",
+        category=Category.ADDRESS,
+        case_sensitive=True,
+        pattern=(
+            rf"(?<![\w])(?!(?i:{_HOUSE_NO_STOP})\b){_HOUSE_STREET}[ \t]+"
+            rf"{_HOUSE_NO_SHORT}(?![\w\u20ac%'\u2019])"
+            # "Police 44-778" ist keine Hausnummer, "12-14" schon.
+            rf"(?![ \t]?[-/][ \t]?\d{{3,}})"
         ),
     ),
     Rule(
