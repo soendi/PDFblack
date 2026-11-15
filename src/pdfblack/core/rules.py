@@ -84,7 +84,9 @@ _CH_STOPWORDS = (
     "und|oder|bis|von|nach|aus|auf|in|im|am|an|mit|fuer|für|zum|zur|der|die|"
     "das|den|dem|des|ein|eine|einer|einem|eines|ist|sind|wird|werden|wurde|"
     "nicht|auch|samt|sowie|bzw|ca|etwa|etc|pro|je|betraegt|beträgt|kostet|"
-    "gilt|umfasst|entspricht|gem|gemaeß|gemäß|inkl|zzgl"
+    "gilt|umfasst|entspricht|gem|gemaeß|gemäß|inkl|zzgl|personalnummer|"
+    "versichertennummer|ausweisnummer|kundennummer|vertragsnummer|mitgliedsnummer|"
+    "aktenzeichen|geburtsdatum|datum|kennung|zeichen|obligation|police"
 )
 # Ortsnamen duerfen innen gross schreiben (Tour-de-Peilz, Bad Ragaz) und in
 # schlecht gesetzten PDFs auch klein beginnen; die Stopwortliste faengt die
@@ -92,6 +94,9 @@ _CH_STOPWORDS = (
 _CH_CITY_WORD = (
     r"[A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df][A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df\-'.]*"
 )
+# Vor der Zahl darf kein Bindestrich, Schraegstrich oder Viertelzeichen stehen:
+# "4711-2233" und "PE-8842/2024" sind Nummern, keine Postleitzahlen.
+_CH_PLZ_LEAD = r"(?<![\d\w\-/.'\u2019])"
 _CH_PLZ = r"(?:1\d{3}|[2-9]\d{3})"
 
 _ID_SUFFIX = r"[. \t-]{0,2}(?:nummer|nr\.?|identifikationsnummer|id|zeichen|kennzeichen)"
@@ -171,7 +176,7 @@ RULES: tuple[Rule, ...] = (
         category=Category.POSTAL,
         case_sensitive=True,
         pattern=(
-            rf"(?<![\d\w]){_CH_PLZ}(?!\d)[ \t]+"
+            rf"{_CH_PLZ_LEAD}{_CH_PLZ}(?!\d)[ \t]+"
             rf"(?!(?i:{_CH_STOPWORDS})\b)"
             rf"{_CH_CITY_WORD}(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
         ),
@@ -183,9 +188,20 @@ RULES: tuple[Rule, ...] = (
         category=Category.POSTAL,
         case_sensitive=True,
         pattern=(
-            rf"(?<![\d\w]){_CH_PLZ}(?!\d)[ \t]*\n[ \t]*"
+            rf"{_CH_PLZ_LEAD}{_CH_PLZ}(?!\d)[ \t]*\n[ \t]*"
             rf"(?!(?i:{_CH_STOPWORDS})\b)"
             rf"{_CH_CITY_WORD}(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
+        ),
+    ),
+    Rule(
+        key="ch_postal_before",
+        label="Schweizer PLZ (Ort in vorheriger Zeile)",
+        group="ch_postal",
+        category=Category.POSTAL,
+        case_sensitive=True,
+        pattern=(
+            rf"(?:^|\n)[ \t]*(?!(?i:{_CH_STOPWORDS})\b){_CH_CITY_WORD}"
+            rf"(?:[ \t]+{_CH_CITY_WORD}){{0,2}}[ \t]*\n[ \t]*{_CH_PLZ}(?!\d)"
         ),
     ),
     Rule(

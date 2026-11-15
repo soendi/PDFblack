@@ -92,6 +92,9 @@ class TextMap:
         parts: list[str] = []
         cursor = 0
         last_line: tuple[int, int] | None = None
+        # Hinweis: Werte von Formularfeldern erscheinen in dieser PyMuPDF-
+        # Fassung als normaler Seitentext - aber oft in eigenen Bloecken, also
+        # in getrennten Zeilen.
         for entry in page.get_text("words"):
             x0, y0, x1, y1, word = entry[0], entry[1], entry[2], entry[3], entry[4]
             block_no = int(entry[5]) if len(entry) > 5 else 0

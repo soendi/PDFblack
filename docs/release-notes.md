@@ -6,6 +6,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 - **Hausnummern:** die Nummer hinter dem Straßennamen wird auch dann geschwärzt, wenn die Straße kein deutsches Suffix hat („Rue du Lac 12“, „Unter den Linden 5a“). Erkannt werden Zahl (`12`), Zahl mit Leerzeichen und Buchstabe (`12 a`) und Zahl mit Buchstabe ohne Abstand (`12a`).
 - **Schweizer Postleitzahlen:** vierstellige PLZ mit Präfix (`CH-8045`, `CH 3000 Bern`) und mit nachgestelltem Ort (`8045 Zürich`, `CH-1814 La Tour-de-Peilz`) – auch dann, wenn der Ort erst in der nächsten Zeile steht (`9435` / `Heerbrugg`) oder kleingeschrieben ist. Beträge, Mengen und Zeiteinheiten gelten nicht als Ort – „1500 Franken" bleibt stehen. Eigener Schalter in der automatischen Erkennung.
+- **Formular-PDFs:** Werte in Formularfeldern (AcroForm) werden erkannt, und beim Schwärzen werden die betroffenen Felder geleert und entfernt. Bisher blieb ein Feldwert trotz geschwärzter Fläche im PDF erhalten.
 - **Automatische Updates:** PDFblack prüft beim Start im Hintergrund, ob eine neue Version bereitsteht, lädt sie und spielt sie ohne Assistent ein. Von Hand über **Hilfe → Nach Updates suchen …**.
 - **Gemerkte Einstellungen:** die Häkchen der automatischen Erkennung und die Empfindlichkeit gelten beim nächsten Start weiter.
 - **Telefonnummern** mit beliebiger Ländervorwahl (`+41 …`), nicht mehr nur `+49`.
@@ -30,7 +31,7 @@ Python-Zubehör nötig).
 
 ### Geprüft
 
-- 19 automatisierte Tests für Erkennung, Hausnummern, Schweizer PLZ über Zeilenumbrüche, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 20 automatisierte Tests für Erkennung, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

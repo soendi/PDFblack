@@ -29,6 +29,34 @@ def _drop_links_inside(page: pymupdf.Page, boxes: list[pymupdf.Rect]) -> None:
             page.delete_link(link)
 
 
+def _clear_widgets(page: pymupdf.Page, boxes: list[pymupdf.Rect]) -> None:
+    """Formularfelder im Schwärzungsbereich leeren und entfernen.
+
+    Feldwerte stehen in der Felderscheinung, nicht im Seitentext; ohne diesen
+    Schritt bliebe der Wert im PDF erhalten, obwohl die Flaeche geschwaerzt ist.
+    """
+    try:
+        widgets = list(page.widgets() or [])
+    except Exception:  # noqa: BLE001 - defekte Formulare nicht abbrechen
+        return
+    for widget in widgets:
+        try:
+            rect = pymupdf.Rect(widget.rect)
+        except Exception:  # noqa: BLE001
+            continue
+        if not any(rect.intersects(box) for box in boxes):
+            continue
+        try:
+            widget.field_value = ""
+            widget.update()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            page.delete_widget(widget)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def apply_redactions(
     src: str,
     dst: str,
@@ -66,6 +94,7 @@ def apply_redactions(
                     count += 1
             if boxes:
                 _drop_links_inside(page, boxes)
+                _clear_widgets(page, boxes)
                 page.apply_redactions(
                     images=pymupdf.PDF_REDACT_IMAGE_NONE,
                     graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,

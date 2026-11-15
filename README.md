@@ -29,6 +29,10 @@ und echter Entfernung des Textes.
 | Zweiter Durchlauf | alle Werte aus den Eingabefeldern (Vorname, Nachname, Adresse, PLZ, Ort, Personennummer, weitere Begriffe) |
 | Eigene Regexe | beliebige reguläre Ausdrücke, ein Ausdruck pro Zeile |
 
+Werte aus Formularfeldern (AcroForm) werden mitgelesen und beim Schwärzen
+geleert und entfernt – der Wert bleibt also nicht als Feld im PDF zurück,
+obwohl die Fläche geschwärzt aussieht.
+
 Schweizer Postleitzahlen sind nur vierstellig. Damit nicht jede vierstellige
 Zahl (Jahr, Betrag, Stückzahl) geschwärzt wird, verlangt die Erkennung entweder
 den Präfix `CH`/`CH-` oder einen Ortsnamen dahinter, der kein Betrag und keine

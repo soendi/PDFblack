@@ -124,6 +124,59 @@ def test_schwaerzen_entfernt_text(sample, tmp_path):
     assert "4711-2233" in pymupdf.open(str(sample))[0].get_text()
 
 
+def _form_pdf(path, fields):
+    """PDF mit ausfuellbaren Textfeldern anlegen."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((60, 100), "Adressänderung", fontsize=14, fontname="helv")
+    for name, value, rect in fields:
+        widget = pymupdf.Widget()
+        widget.field_name = name
+        widget.field_type = pymupdf.PDF_WIDGET_TYPE_TEXT
+        widget.rect = pymupdf.Rect(*rect)
+        widget.field_value = value
+        page.add_widget(widget)
+    doc.save(str(path))
+    doc.close()
+    return path
+
+
+def test_formularfelder_werden_erkannt_und_geleert(tmp_path):
+    """PLZ und Ort in getrennten Feldern: erkennen und Wert wirklich loeschen."""
+    source = _form_pdf(
+        tmp_path / "formular.pdf",
+        [
+            ("strasse", "Musterweg 5", (120, 150, 320, 168)),
+            ("plz", "9435", (120, 178, 200, 196)),
+            ("ort", "Heerbrugg", (120, 206, 260, 224)),
+            # umgekehrte Reihenfolge: Ort vor PLZ
+            ("ort2", "St. Margrethen", (320, 178, 460, 196)),
+            ("plz2", "9430", (320, 206, 400, 224)),
+        ],
+    )
+    result = run_detection(
+        str(source),
+        DetectionOptions(use_ai=False, ai_entities=(), rule_groups=("address", "ch_postal")),
+    )
+    found = texts(result.findings)
+    assert any("9435" in item and "Heerbrugg" in item for item in found)
+    assert any("9430" in item and "Margrethen" in item for item in found)
+    assert any("Musterweg 5" in item for item in found)
+
+    target = tmp_path / "formular_geschwaerzt.pdf"
+    count = apply_redactions(str(source), str(target), result.findings)
+    assert count > 0
+
+    doc = pymupdf.open(str(target))
+    page = doc[0]
+    remaining = [w.field_value for w in (page.widgets() or [])]
+    rest_text = page.get_text()
+    doc.close()
+    assert not [value for value in remaining if value], remaining
+    for leaking in ("9435", "9430", "Heerbrugg", "Margrethen", "Musterweg"):
+        assert leaking not in rest_text, leaking
+
+
 def test_schweizer_plz_ueber_zeilenumbruch(tmp_path):
     """PLZ und Ort duerfen in getrennten Zeilen stehen."""
     path = tmp_path / "ch_umbruch.pdf"
@@ -136,6 +189,9 @@ def test_schweizer_plz_ueber_zeilenumbruch(tmp_path):
         "9430 st. margrethen",
         "Es kostet 1500 Franken.",
         "Von 9435 bis 9440",
+        "Vertragsnummer: PE-8842/2024",
+        "Personalnummer: 4711-2233",
+        "Versichertennummer: 99887766",
     ]
     for index, line in enumerate(lines):
         page.insert_text((60, 100 + index * 24), line, fontsize=11, fontname="helv")
@@ -153,6 +209,8 @@ def test_schweizer_plz_ueber_zeilenumbruch(tmp_path):
     assert not derived, "Zeilenumbrueche gehoeren nicht in den Treffertext"
     assert not any("1500" in item for item in found)
     assert not any("9440" in item for item in found)
+    # Nummernkreise wie "PE-8842/2024" oder "4711-2233" sind keine PLZ
+    assert not any("-" in item or "/" in item for item in found)
 
 
 def test_hausnummer_hinter_strassennamen(tmp_path):
