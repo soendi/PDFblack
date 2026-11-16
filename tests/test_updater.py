@@ -256,7 +256,7 @@ def test_helfer_aufruf_nutzt_das_eigene_programm(monkeypatch, tmp_path):
     assert aufruf[-2:] == ["--wait-pid", "1234"]
 
 
-def test_helfer_startet_das_setup_erst_wenn_das_fenster_zu_ist(monkeypatch):
+def test_helfer_startet_das_setup_erst_wenn_das_fenster_zu_ist(monkeypatch, tmp_path):
     """Der Installer laeuft erst, nachdem der alte Prozess beendet ist."""
     import subprocess
     import sys
@@ -274,10 +274,11 @@ def test_helfer_startet_das_setup_erst_wenn_das_fenster_zu_ist(monkeypatch):
 
     monkeypatch.setattr(updater_module, "launch_installer", fake_launch)
 
+    paket = tmp_path / "neu.exe"
     code = app_module._apply_update(
-        ["pdfblack", "--apply-update", "/tmp/neu.exe", "--wait-pid", str(child.pid)]
+        ["pdfblack", "--apply-update", str(paket), "--wait-pid", str(child.pid)]
     )
 
     assert code == 0
     assert gesehen["fenster_zu"] is True
-    assert gesehen["archive"] == "/tmp/neu.exe"
+    assert gesehen["archive"] == str(paket)

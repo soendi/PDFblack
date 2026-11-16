@@ -228,11 +228,19 @@ def _pid_alive(pid: int) -> bool:
         if sys.platform.startswith("win"):
             import ctypes
 
-            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # QUERY
+            kernel32 = ctypes.windll.kernel32
+            # Nur die Existenz zu pruefen reicht nicht: Windows vergibt PIDs neu,
+            # deshalb zaehlt der Exit-Code des Prozesses.
+            handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED
             if not handle:
                 return False
-            ctypes.windll.kernel32.CloseHandle(handle)
-            return True
+            try:
+                code = ctypes.c_ulong(0)
+                if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                    return False
+                return code.value == 259  # STILL_ACTIVE
+            finally:
+                kernel32.CloseHandle(handle)
         # Beendete, aber noch nicht abgeholte Prozesse gelten als beendet.
         try:
             with open(
