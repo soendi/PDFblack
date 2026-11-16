@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pymupdf
 
-from pdfblack.core import berufe
-from pdfblack.core.detect import DetectionOptions, name_tokens, run_detection
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from pdfblack.core import berufe  # noqa: E402
+from pdfblack.core.detect import (  # noqa: E402
+    DetectionOptions,
+    name_tokens,
+    run_detection,
+)
 
 
 def texts(findings) -> list[str]:

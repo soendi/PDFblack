@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pymupdf
 
-from pdfblack.core.models import Category, Finding
-from pdfblack.core.ocr import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from pdfblack.core.models import Category, Finding  # noqa: E402
+from pdfblack.core.ocr import (  # noqa: E402
     Word,
     _lies_tsv,
     has_text,
