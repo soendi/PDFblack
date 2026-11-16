@@ -8,7 +8,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 - **Installation bringt die Sprache mit:** Die stille Installation über `winget` richtet nur das Tesseract-Programm samt Englisch ein – Deutsch kommt jetzt aus dem Programm selbst. Nach der Nachinstallation ist PDFocr sofort einsatzbereit, ohne zweiten Download und ohne Schreibrechte im Programmverzeichnis.
 - **Grüner Knopf am Textanfang:** Beim Wechsel zu PDFocr steht das grüne „T“-Logo jetzt genau dort, wo der Text des blauen Knopfes beginnt; der Vergleichsknopf fährt an seinen Platz zurück, statt daneben stehen zu bleiben.
 
-### Neu in 1.3.1
+## PDFblack 1.3.1
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
