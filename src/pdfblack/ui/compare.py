@@ -157,6 +157,11 @@ def delete_redacted(paths: list[str]) -> tuple[int, list[str]]:
     return geloescht, fehler
 
 
+def _norm(path: str) -> str:
+    """Pfad fuer Vergleiche - unter Windows ohne Ruecksicht auf Schreibweise."""
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
 def _read_list(key: str) -> list[str]:
     """Gespeicherte Pfadliste lesen (QSettings liefert je nach System String)."""
     value = _settings().value(key, [])
@@ -244,9 +249,9 @@ class PathList(QListWidget):
         self.changed.emit()
 
     def remove_path(self, path: str) -> bool:
-        path = os.path.abspath(path)
+        gesucht = _norm(path)
         for index in range(self.count()):
-            if self.item(index).data(Qt.UserRole) == path:
+            if _norm(self.item(index).data(Qt.UserRole)) == gesucht:
                 self.takeItem(index)
                 return True
         return False
@@ -264,8 +269,10 @@ class PathList(QListWidget):
         return True
 
     def contains_path(self, path: str) -> bool:
+        gesucht = _norm(path)
         return any(
-            self.item(index).data(Qt.UserRole) == path for index in range(self.count())
+            _norm(self.item(index).data(Qt.UserRole)) == gesucht
+            for index in range(self.count())
         )
 
     def paths(self) -> list[str]:
@@ -297,10 +304,10 @@ class RecentList(PathList):
 
     def allow(self, paths) -> None:
         """Welche Dateien gerade in einem Stapel stehen."""
-        self._from_stacks = {os.path.abspath(path) for path in paths}
+        self._from_stacks = {_norm(path) for path in paths}
 
     def accepts(self, path: str) -> bool:
-        return os.path.abspath(path) in self._from_stacks
+        return _norm(path) in self._from_stacks
 
 
 class DropList(PathList):
@@ -559,9 +566,9 @@ class CompareView(QWidget):
         self.recent.clear()
         self.life.set_files(_read_list(LIFE_KEY))
         self.certs.set_files(_read_list(CERT_KEY))
-        zugeordnet = set(self.life.paths()) | set(self.certs.paths())
+        zugeordnet = {_norm(path) for path in self.life.paths() + self.certs.paths()}
         for path in _read_list(RECENT_KEY):
-            if not os.path.exists(path) or path in zugeordnet:
+            if not os.path.exists(path) or _norm(path) in zugeordnet:
                 continue
             item = QListWidgetItem(os.path.basename(path))
             item.setToolTip(path)
@@ -574,10 +581,11 @@ class CompareView(QWidget):
     def remember(self, path: str) -> None:
         """Eine frisch geschwaerzte Datei oben in die Liste aufnehmen."""
         path = os.path.abspath(path)
-        if path in self.life.paths() or path in self.certs.paths():
+        zugeordnet = {_norm(item) for item in self.life.paths() + self.certs.paths()}
+        if _norm(path) in zugeordnet:
             # Steht schon in einem Stapel - eine Datei ist nur einmal gelistet.
             return
-        entries = [item for item in _read_list(RECENT_KEY) if item != path]
+        entries = [item for item in _read_list(RECENT_KEY) if _norm(item) != _norm(path)]
         entries.insert(0, path)
         _write_list(RECENT_KEY, entries[:MAX_RECENT])
         self.refresh()
@@ -596,7 +604,7 @@ class CompareView(QWidget):
             for path in reversed(verschoben):
                 for index in range(self.recent.count()):
                     item = self.recent.item(index)
-                    if item.data(Qt.UserRole) == path:
+                    if _norm(item.data(Qt.UserRole)) == _norm(path):
                         self.recent.takeItem(index)
                         self.recent.insertItem(0, item)
                         break

@@ -32,9 +32,25 @@ def qt_app():
 @pytest.fixture
 def settings_dir(qt_app, tmp_path):
     """Einstellungen im Testverzeichnis halten, echte bleiben unberuehrt."""
+    alt = QtCore.QSettings.defaultFormat()
     for fmt in (QtCore.QSettings.IniFormat, QtCore.QSettings.NativeFormat):
         QtCore.QSettings.setPath(fmt, QtCore.QSettings.UserScope, str(tmp_path))
-    return tmp_path
+    # Unter Windows liegen NativeFormat-Einstellungen in der Registry, dort
+    # greift setPath nicht. Darum schreiben die Tests in eine INI-Datei.
+    QtCore.QSettings.setDefaultFormat(QtCore.QSettings.IniFormat)
+    try:
+        yield tmp_path
+    finally:
+        QtCore.QSettings.setDefaultFormat(alt)
+
+
+def _same(pfad: str) -> str:
+    """Pfad so vergleichen, wie die Listen ihn ablegen (unter Windows egal welche Schreibweise)."""
+    return os.path.normcase(os.path.abspath(str(pfad)))
+
+
+def _pfade(liste) -> list[str]:
+    return [_same(pfad) for pfad in liste.paths()]
 
 
 def _pdf(path) -> str:
@@ -289,29 +305,33 @@ def test_ziehen_zwischen_allen_listen(qt_app, settings_dir, tmp_path):
     from pdfblack.ui import compare
 
     view = compare.CompareView()
+    view.clear_all()
     leben = _pdf(tmp_path / "lebenslauf.pdf")
     zeugnis = _pdf(tmp_path / "zeugnis.pdf")
     mime, event = _drop_event(leben)
     view.life.dropEvent(event)
     mime, event = _drop_event(zeugnis)
     view.certs.dropEvent(event)
-    assert view.life.paths() == [leben] and view.certs.paths() == [zeugnis]
+    assert _pfade(view.life) == [_same(leben)]
+    assert _pfade(view.certs) == [_same(zeugnis)]
 
     # Lebenslauf -> Arbeitszeugnisse
     mime, event = _drop_event(leben)
     view.certs.dropEvent(event)
-    assert view.life.paths() == [] and leben in view.certs.paths()
+    assert view.life.count() == 0 and _same(leben) in _pfade(view.certs)
 
     # Arbeitszeugnisse -> Zuletzt geschwaerzt
     mime, event = _drop_event(leben)
     view.recent.dropEvent(event)
-    assert leben in view.recent.paths() and leben not in view.certs.paths()
-    assert view.recent.item(0).data(QtCore.Qt.UserRole) == leben
+    assert _same(leben) in _pfade(view.recent)
+    assert _same(leben) not in _pfade(view.certs)
+    assert _same(view.recent.item(0).data(QtCore.Qt.UserRole)) == _same(leben)
 
     # und zurueck in einen Stapel
     mime, event = _drop_event(leben)
     view.life.dropEvent(event)
-    assert view.life.paths() == [leben] and leben not in view.recent.paths()
+    assert _pfade(view.life) == [_same(leben)]
+    assert _same(leben) not in _pfade(view.recent)
 
     view.deleteLater()
     qt_app.processEvents()
@@ -322,9 +342,9 @@ def test_knoepfe_leeren_einzelne_listen(qt_app, settings_dir, tmp_path):
     from pdfblack.ui import compare
 
     view = compare.CompareView()
+    view.clear_all()
     for name in ("a.pdf", "b.pdf"):
-        mime, event = _drop_event(_pdf(tmp_path / name))
-        view.recent.add_file(str(tmp_path / name))
+        view.remember(_pdf(tmp_path / name))
     mime, event = _drop_event(_pdf(tmp_path / "leben.pdf"))
     view.life.dropEvent(event)
     mime, event = _drop_event(_pdf(tmp_path / "zeugnis.pdf"))
@@ -359,6 +379,7 @@ def test_muellimer_entfernt_nur_aus_der_liste(
 
     datei = _pdf(tmp_path / "zeugnis.pdf")
     view = compare.CompareView()
+    view.clear_all()
     mime, event = _drop_event(datei)
     view.certs.dropEvent(event)
     assert view.certs.count() == 1
@@ -390,6 +411,7 @@ def test_schliessen_leert_listen_und_loescht_dateien(
     datei = tmp_path / "geschwaerzt.pdf"
     datei.write_bytes(b"%PDF-1.4\n")
     view = compare.CompareView()
+    view.clear_all()
     mime, event = _drop_event(str(datei))
     view.life.dropEvent(event)
 
@@ -421,6 +443,7 @@ def test_schliessen_behaelt_dateien_bei_abgelehnter_frage(
     datei = tmp_path / "behalten.pdf"
     datei.write_bytes(b"%PDF-1.4\n")
     view = compare.CompareView()
+    view.clear_all()
     mime, event = _drop_event(str(datei))
     view.certs.dropEvent(event)
 
