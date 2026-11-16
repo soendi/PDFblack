@@ -1389,5 +1389,7 @@ class MainWindow(QMainWindow):
             self._worker.cancel()
             self._worker.wait(3000)
             self._worker = None
+        # PDFcompare: Listen leeren und nach den Dateien fragen.
+        self.compare_view.cleanup_on_close(self)
         self.canvas.clear()
         event.accept()

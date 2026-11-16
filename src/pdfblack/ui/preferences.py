@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from urllib.parse import quote
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
@@ -74,11 +75,35 @@ def active_agent() -> dict[str, str] | None:
     return None
 
 
-def open_copilot(entry: dict[str, str] | None = None) -> bool:
+def copilot_uri(prompt: str = "", file: str | None = None) -> str:
+    """URI fuer Copilot mit vorformulierter Frage und angehaengter Datei.
+
+    Der Parameter ``file`` ist nicht von Microsoft dokumentiert; der Handler
+    wertet ihn nach bisherigen Berichten aus (``ms-copilot:chat?q=...&file=...``).
+    Wirkt er nicht, oeffnet :func:`open_copilot` Copilot ohne Datei.
+    """
+    teile: list[str] = []
+    if prompt:
+        teile.append("q=" + quote(prompt, safe=""))
+    if file:
+        teile.append("file=" + quote(file, safe=":\\/"))
+    if not teile:
+        return COPILOT_URI
+    return "ms-copilot:chat?" + "&".join(teile)
+
+
+def open_copilot(
+    entry: dict[str, str] | None = None,
+    prompt: str = "",
+    file: str | None = None,
+) -> bool:
     """Copilot oeffnen - unter Windows ueber das ms-copilot-Protokoll."""
     entry = entry or active_agent()
     if sys.platform.startswith("win"):
-        if QDesktopServices.openUrl(QUrl(COPILOT_URI)):
+        if QDesktopServices.openUrl(QUrl(copilot_uri(prompt, file))):
+            return True
+        # Der Dateiparameter ist nicht dokumentiert: notfalls ohne ihn oeffnen.
+        if (prompt or file) and QDesktopServices.openUrl(QUrl(COPILOT_URI)):
             return True
     if entry and entry.get("link"):
         return QDesktopServices.openUrl(QUrl(entry["link"]))

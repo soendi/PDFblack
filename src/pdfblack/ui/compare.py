@@ -7,15 +7,19 @@ import re
 import shutil
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+import pymupdf
+
+from PySide6.QtCore import QMimeData, QRectF, Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -32,14 +36,24 @@ MAX_RECENT = 30
 LIFE_PREFIX = "Lebenslauf"
 CERT_PREFIX = "Arbeitszeugnis"
 
+HANDOVER_PROMPT = (
+    "Hier sind Lebenslauf und Arbeitszeugnisse. Bitte lies die Unterlagen "
+    "und fasse sie zusammen."
+)
 
-def handover_folder(agent: str) -> Path:
-    """Ordner, in dem die Dateien fuer einen Agenten bereitgelegt werden."""
+
+def handover_base() -> Path:
+    """Wurzel der Uebergabeordner (ein Unterordner je Agent)."""
     base = os.environ.get("LOCALAPPDATA") or os.path.join(
         os.path.expanduser("~"), ".local", "share"
     )
+    return Path(base) / "PDFblack" / "Copilot-Uebergabe"
+
+
+def handover_folder(agent: str) -> Path:
+    """Ordner, in dem die Dateien fuer einen Agenten bereitgelegt werden."""
     safe = re.sub(r"[^A-Za-z0-9._ -]+", "_", agent).strip() or "Copilot"
-    return Path(base) / "PDFblack" / "Copilot-Uebergabe" / safe
+    return handover_base() / safe
 
 
 def handover_files(
@@ -73,6 +87,76 @@ def handover_files(
     return kopiert
 
 
+def bundle_pdfs(files: list[Path], target: Path) -> Path | None:
+    """Mehrere PDFs zu einer Datei zusammenfassen.
+
+    Copilot bekommt nur eine Datei uebergeben. Nicht lesbare Dateien werden
+    uebersprungen; ist keine einzige lesbar, gibt es kein Buendel.
+    """
+    merged = pymupdf.open()
+    try:
+        for pfad in files:
+            try:
+                quelle = pymupdf.open(str(pfad))
+            except Exception:  # noqa: BLE001 - kaputte Datei ueberspringen
+                continue
+            try:
+                merged.insert_pdf(quelle)
+            finally:
+                quelle.close()
+        if merged.page_count == 0:
+            return None
+        merged.save(str(target))
+    finally:
+        merged.close()
+    return target
+
+
+def delete_redacted(paths: list[str]) -> tuple[int, list[str]]:
+    """Geschwaerzte Dateien und ihre Kopien im Uebergabeordner loeschen.
+
+    Zurueck kommen die Anzahl geloeschter Dateien und die Fehlermeldungen;
+    fehlende Dateien gelten nicht als Fehler.
+    """
+    geloescht = 0
+    fehler: list[str] = []
+    stems: list[str] = []
+
+    for path in paths:
+        datei = Path(path)
+        stems.append(datei.stem)
+        try:
+            if datei.is_file():
+                datei.unlink()
+                geloescht += 1
+        except OSError as exc:
+            fehler.append(f"{datei.name}: {exc}")
+
+    base = handover_base()
+    if not base.is_dir():
+        return geloescht, fehler
+
+    for folder in sorted(entry for entry in base.iterdir() if entry.is_dir()):
+        kopien = [folder / "Unterlagen.pdf"]
+        for stem in stems:
+            kopien.append(folder / f"{LIFE_PREFIX}_{stem}.pdf")
+            kopien.append(folder / f"{CERT_PREFIX}_{stem}.pdf")
+        for kopie in kopien:
+            try:
+                if kopie.is_file():
+                    kopie.unlink()
+                    geloescht += 1
+            except OSError as exc:
+                fehler.append(f"{kopie.name}: {exc}")
+        try:
+            if not any(folder.iterdir()):
+                folder.rmdir()
+        except OSError:
+            pass
+
+    return geloescht, fehler
+
+
 def _read_list(key: str) -> list[str]:
     """Gespeicherte Pfadliste lesen (QSettings liefert je nach System String)."""
     value = _settings().value(key, [])
@@ -87,13 +171,23 @@ def _write_list(key: str, paths: list[str]) -> None:
     _settings().setValue(key, list(paths))
 
 
-class RecentList(QListWidget):
-    """Quelle: die zuletzt geschwaerzten PDF-Dateien."""
+class PathList(QListWidget):
+    """Liste von PDF-Pfaden, in beide Richtungen ziehbar.
+
+    Was abgelegt wird, meldet die Liste per ``dropped``; das Verschieben
+    zwischen den Listen macht die Ansicht, damit eine Datei nur in einer steht.
+    """
+
+    changed = Signal()
+    dropped = Signal(list)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setAcceptDrops(True)
         self.setDragEnabled(True)
-        self.setDragDropMode(QAbstractItemView.DragOnly)
+        self.setDragDropMode(QAbstractItemView.DragDrop)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.setDropIndicatorShown(True)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
@@ -109,31 +203,22 @@ class RecentList(QListWidget):
             mime.setText("\n".join(paths))
         return mime
 
-
-class DropList(QListWidget):
-    """Ablage fuer PDF-Dateien; nimmt Ziehungen aus der linken Liste an."""
-
-    def __init__(self, on_change=None, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setAcceptDrops(True)
-        self.setDragDropMode(QAbstractItemView.DropOnly)
-        self.setDropIndicatorShown(True)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setDefaultDropAction(Qt.CopyAction)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._on_change = on_change
-
     # -- Ablage -------------------------------------------------------
+
+    def accepts(self, path: str) -> bool:
+        """Darf diese Datei hier abgelegt werden?"""
+        return True
 
     def _paths_from(self, event) -> list[str]:
         mime = event.mimeData()
         if not mime.hasUrls():
             return []
-        return [
+        paths = [
             url.toLocalFile()
             for url in mime.urls()
             if url.isLocalFile() and url.toLocalFile().lower().endswith(".pdf")
         ]
+        return [path for path in paths if self.accepts(path)]
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802
         if self._paths_from(event):
@@ -152,10 +237,11 @@ class DropList(QListWidget):
         if not paths:
             event.ignore()
             return
-        for path in paths:
-            self.add_file(path)
+        added = [path for path in paths if self.add_file(path)]
         event.acceptProposedAction()
-        self._changed()
+        if added:
+            self.dropped.emit(added)
+        self.changed.emit()
 
     def remove_path(self, path: str) -> bool:
         path = os.path.abspath(path)
@@ -193,17 +279,122 @@ class DropList(QListWidget):
             if path:
                 self.add_file(path)
 
-    def _changed(self) -> None:
-        if self._on_change is not None:
-            self._on_change(self)
-
     def keyPressEvent(self, event) -> None:  # noqa: N802
         if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
             for item in self.selectedItems():
                 self.takeItem(self.row(item))
-            self._changed()
+            self.changed.emit()
             return
         super().keyPressEvent(event)
+
+
+class RecentList(PathList):
+    """Zuletzt geschwaerzt: nimmt nur Dateien aus den beiden Stapeln zurueck."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._from_stacks: set[str] = set()
+
+    def allow(self, paths) -> None:
+        """Welche Dateien gerade in einem Stapel stehen."""
+        self._from_stacks = {os.path.abspath(path) for path in paths}
+
+    def accepts(self, path: str) -> bool:
+        return os.path.abspath(path) in self._from_stacks
+
+
+class DropList(PathList):
+    """Stapel fuer Lebenslauf oder Zeugnisse."""
+
+    def __init__(self, on_change=None, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._on_change = on_change
+        if on_change is not None:
+            self.changed.connect(lambda: on_change(self))
+
+
+def trash_pixmap(size: int = 22) -> QPixmap:
+    """Kleiner roter Muellimer fuer die Ablagezone."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    s = float(size)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QColor("#e5484d"))
+    painter.drawRoundedRect(QRectF(s * 0.42, s * 0.04, s * 0.16, s * 0.07), s * 0.03, s * 0.03)
+    painter.drawRoundedRect(QRectF(s * 0.26, s * 0.11, s * 0.48, s * 0.09), s * 0.04, s * 0.04)
+    painter.drawRoundedRect(QRectF(s * 0.21, s * 0.24, s * 0.58, s * 0.66), s * 0.10, s * 0.10)
+    painter.setBrush(QColor("#14161b"))
+    for x in (0.34, 0.47, 0.60):
+        painter.drawRoundedRect(QRectF(s * x, s * 0.34, s * 0.05, s * 0.44), s * 0.02, s * 0.02)
+    painter.end()
+    return pixmap
+
+
+class TrashZone(QFrame):
+    """Kleine Ablage: entfernt eine Datei aus der Liste, nicht vom Rechner."""
+
+    dropped = Signal(list)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("Trash")
+        self.setFixedHeight(56)
+        self.setAcceptDrops(True)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(9)
+        icon = QLabel()
+        icon.setPixmap(trash_pixmap(22))
+        text = QLabel("Datei hierher ziehen, um sie aus der Liste zu entfernen")
+        text.setObjectName("Hint")
+        text.setWordWrap(True)
+        layout.addWidget(icon, 0, Qt.AlignVCenter)
+        layout.addWidget(text, 1)
+
+    def _paths_from(self, event) -> list[str]:
+        mime = event.mimeData()
+        if not mime.hasUrls():
+            return []
+        return [
+            url.toLocalFile()
+            for url in mime.urls()
+            if url.isLocalFile() and url.toLocalFile().lower().endswith(".pdf")
+        ]
+
+    def _active(self, active: bool) -> None:
+        self.setProperty("dragActive", "true" if active else "false")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        if self._paths_from(event):
+            self._active(True)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:  # noqa: N802
+        if self._paths_from(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragLeaveEvent(self, event) -> None:  # noqa: N802
+        self._active(False)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        paths = self._paths_from(event)
+        self._active(False)
+        if not paths:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self.dropped.emit(paths)
 
 
 class CompareView(QWidget):
@@ -224,10 +415,28 @@ class CompareView(QWidget):
         left_title = QLabel("Zuletzt geschwärzt")
         left_title.setObjectName("SectionLabel")
         left.addWidget(left_title)
+        # Beide Stapel zuerst, damit die Knoepfe links alle Listen kennen.
         self.recent = RecentList()
-        self.recent.setToolTip("Dateien nach rechts in einen Stapel ziehen")
+        self.recent.setToolTip("Dateien zwischen den Listen hin und her ziehen")
+        self.life = DropList()
+        self.certs = DropList()
         left.addWidget(self.recent, 1)
-        hint = QLabel("Datei auf einen Stapel rechts ziehen.")
+
+        # Drei Knoepfe: je eine Liste leeren (Dateien bleiben auf dem Rechner).
+        leer_layout = QHBoxLayout()
+        leer_layout.setSpacing(6)
+        for text, liste in (
+            ("Zuletzt leeren", self.recent),
+            ("Lebenslauf leeren", self.life),
+            ("Zeugnisse leeren", self.certs),
+        ):
+            knopf = QPushButton(text)
+            knopf.setObjectName("Ghost")
+            knopf.clicked.connect(lambda _=False, ziel=liste: self.clear_list(ziel))
+            leer_layout.addWidget(knopf)
+        left.addLayout(leer_layout)
+
+        hint = QLabel("Dateien zwischen den Listen ziehen; Entf entfernt einen Eintrag.")
         hint.setObjectName("Hint")
         left.addWidget(hint)
         layout.addLayout(left, 1)
@@ -239,15 +448,17 @@ class CompareView(QWidget):
         life_title = QLabel("Lebenslauf")
         life_title.setObjectName("SectionLabel")
         right.addWidget(life_title)
-        self.life = DropList(on_change=self._changed)
         self.life.setMaximumHeight(170)
         right.addWidget(self.life, 0)
 
         cert_title = QLabel("Arbeitszeugnisse")
         cert_title.setObjectName("SectionLabel")
         right.addWidget(cert_title)
-        self.certs = DropList(on_change=self._changed)
         right.addWidget(self.certs, 1)
+
+        # Kleine Ablage unter den Zeugnissen.
+        self.trash = TrashZone()
+        right.addWidget(self.trash, 0)
 
         # Uebergabe an Copilot: je Agent ein Knopf, ohne Agent die Einstellungen.
         self.agent_box = QWidget()
@@ -258,6 +469,13 @@ class CompareView(QWidget):
         right.addWidget(self.agent_box, 0)
 
         layout.addLayout(right, 1)
+
+        for liste in (self.recent, self.life, self.certs):
+            liste.changed.connect(self._store)
+            liste.dropped.connect(
+                lambda paths, ziel=liste: self._moved(ziel, paths)
+            )
+        self.trash.dropped.connect(self._trash_dropped)
 
         self._refreshing = False
         self.refresh()
@@ -310,11 +528,28 @@ class CompareView(QWidget):
             return
 
         QApplication.clipboard().setText("\n".join(str(pfad) for pfad in dateien))
-        preferences.open_copilot(entry)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
-        self.message.emit(
-            f"{len(dateien)} Dateien für Copilot Agent „{entry['name']}“ bereit: {folder}"
+
+        # Copilot nimmt nur eine Datei entgegen: alles zu einer PDF buendeln.
+        anhang = dateien[0]
+        if len(dateien) > 1:
+            gebuendelt = bundle_pdfs(dateien, folder / "Unterlagen.pdf")
+            if gebuendelt is not None:
+                anhang = gebuendelt
+
+        geoeffnet = preferences.open_copilot(
+            entry, prompt=HANDOVER_PROMPT, file=str(anhang)
         )
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        if geoeffnet:
+            self.message.emit(
+                f"{len(dateien)} Dateien für Copilot Agent „{entry['name']}“ "
+                f"bereit, Copilot mit „{anhang.name}“ geöffnet."
+            )
+        else:
+            self.message.emit(
+                f"{len(dateien)} Dateien für Copilot Agent „{entry['name']}“ "
+                f"bereit: {folder}"
+            )
 
     # ------------------------------------------------------------------
 
@@ -332,6 +567,7 @@ class CompareView(QWidget):
             item.setToolTip(path)
             item.setData(Qt.UserRole, path)
             self.recent.addItem(item)
+        self._sync_allowed()
         self._refreshing = False
         self._rebuild_agent_buttons()
 
@@ -346,30 +582,106 @@ class CompareView(QWidget):
         _write_list(RECENT_KEY, entries[:MAX_RECENT])
         self.refresh()
 
-    def _changed(self, source: "DropList") -> None:
+    def _moved(self, target: "PathList", paths: list[str]) -> None:
         """Nach dem Ablegen: eine Datei steht immer nur in einer Liste."""
         if self._refreshing:
             return
-        assigned = set(source.paths())
-        other = self.certs if source is self.life else self.life
-        for path in list(other.paths()):
-            if path in assigned:
-                other.remove_path(path)
-        for path in assigned:
-            self._forget(path)
+        verschoben = [path for path in paths if os.path.exists(path)]
+        for path in verschoben:
+            for liste in (self.recent, self.life, self.certs):
+                if liste is not target:
+                    liste.remove_path(path)
+        if target is self.recent and verschoben:
+            # Zurueck nach links: die Datei steht dort wieder oben.
+            for path in reversed(verschoben):
+                for index in range(self.recent.count()):
+                    item = self.recent.item(index)
+                    if item.data(Qt.UserRole) == path:
+                        self.recent.takeItem(index)
+                        self.recent.insertItem(0, item)
+                        break
+        self._sync_allowed()
         self._store()
 
-    def _forget(self, path: str) -> None:
-        """Datei aus der Liste der zuletzt geschwaerzten entfernen."""
-        for index in range(self.recent.count()):
-            if self.recent.item(index).data(Qt.UserRole) == path:
-                self.recent.takeItem(index)
-                break
-        rest = [entry for entry in _read_list(RECENT_KEY) if entry != path]
-        _write_list(RECENT_KEY, rest)
+    def _sync_allowed(self) -> None:
+        """Die linke Liste nimmt nur zurueck, was in einem Stapel steht."""
+        self.recent.allow(set(self.life.paths()) | set(self.certs.paths()))
 
     def _store(self) -> None:
         if self._refreshing:
             return
+        _write_list(RECENT_KEY, self.recent.paths())
         _write_list(LIFE_KEY, self.life.paths())
         _write_list(CERT_KEY, self.certs.paths())
+
+    def clear_list(self, liste: "PathList") -> None:
+        """Eine Liste leeren - die Dateien auf dem Rechner bleiben."""
+        if not liste.count():
+            return
+        liste.clear()
+        self._sync_allowed()
+        self._store()
+
+    def clear_all(self) -> None:
+        """Alle drei Listen leeren, auch die gespeicherten."""
+        self._refreshing = True
+        try:
+            for liste in (self.recent, self.life, self.certs):
+                liste.clear()
+            for key in (RECENT_KEY, LIFE_KEY, CERT_KEY):
+                _write_list(key, [])
+            self._sync_allowed()
+        finally:
+            self._refreshing = False
+
+    def _trash_dropped(self, paths: list[str]) -> None:
+        """Ablegen auf dem Muellimer: nur aus der Liste entfernen."""
+        if not paths:
+            return
+        namen = "\n".join(os.path.basename(path) for path in paths)
+        antwort = QMessageBox.question(
+            self,
+            "Wirklich entfernen?",
+            f"{namen}\n\nAus der Liste entfernen? Die Datei bleibt auf dem "
+            "Rechner erhalten.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if antwort != QMessageBox.Yes:
+            return
+        for path in paths:
+            for liste in (self.recent, self.life, self.certs):
+                liste.remove_path(path)
+        self._sync_allowed()
+        self._store()
+        self.message.emit("Aus der Liste entfernt – die Datei bleibt erhalten.")
+
+    def cleanup_on_close(self, parent: QWidget) -> None:
+        """Beim Beenden die Listen leeren und nach den Dateien fragen."""
+        paths = list(
+            dict.fromkeys(self.recent.paths() + self.life.paths() + self.certs.paths())
+        )
+        self.clear_all()
+        if not paths:
+            return
+
+        antwort = QMessageBox.question(
+            parent,
+            "Listen geleert",
+            "Die drei Listen sind geleert.\n\nAuch die geschwärzten Dateien auf dem "
+            f"Rechner löschen ({len(paths)})? Kopien im Copilot-Übergabeordner "
+            "werden dann ebenfalls entfernt.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if antwort != QMessageBox.Yes:
+            return
+
+        _, fehler = delete_redacted(paths)
+        if fehler:
+            QMessageBox.warning(
+                parent,
+                "Nicht alles gelöscht",
+                "Diese Dateien konnten nicht gelöscht werden:\n\n"
+                + "\n".join(fehler[:8]),
+            )

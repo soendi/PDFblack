@@ -197,11 +197,11 @@ def test_klick_uebergibt_die_dateien(qt_app, settings_dir, tmp_path, monkeypatch
     from pdfblack.ui import compare, preferences
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
-    geoeffnet: list[dict] = []
+    geoeffnet: list[tuple] = []
     monkeypatch.setattr(
         compare.preferences,
         "open_copilot",
-        lambda entry=None: geoeffnet.append(entry) or True,
+        lambda entry=None, **kwargs: geoeffnet.append((entry, kwargs)) or True,
     )
     monkeypatch.setattr(compare.QDesktopServices, "openUrl", lambda url: True)
 
@@ -218,7 +218,10 @@ def test_klick_uebergibt_die_dateien(qt_app, settings_dir, tmp_path, monkeypatch
     view.message.connect(meldungen.append)
     view.agent_buttons[0].click()
 
-    assert geoeffnet and geoeffnet[0]["name"] == "Bewerbungen"
+    assert geoeffnet and geoeffnet[0][0]["name"] == "Bewerbungen"
+    # Frage und Datei gehen an Copilot, nicht nur der Ordner.
+    assert geoeffnet[0][1]["prompt"] == compare.HANDOVER_PROMPT
+    assert geoeffnet[0][1]["file"].endswith("Lebenslauf_bewerbung_mueller.pdf")
     ordner = compare.handover_folder("Bewerbungen")
     assert sorted(pfad.name for pfad in ordner.glob("*.pdf")) == [
         "Arbeitszeugnis_zeugnis_2024.pdf",
@@ -239,4 +242,195 @@ def test_klick_uebergibt_die_dateien(qt_app, settings_dir, tmp_path, monkeypatch
 
     for widget in (view, leer):
         widget.deleteLater()
+    qt_app.processEvents()
+
+
+def test_copilot_uri_traegt_frage_und_datei():
+    """Der Aufruf an Copilot enthaelt Prompt und Datei."""
+    from pdfblack.ui import preferences
+
+    assert preferences.copilot_uri() == preferences.COPILOT_URI
+    uri = preferences.copilot_uri("Bitte prüfen", r"C:\temp\meine datei.pdf")
+    assert uri.startswith("ms-copilot:chat?")
+    assert "q=Bitte%20pr%C3%BCfen" in uri
+    assert r"file=C:\temp\meine%20datei.pdf" in uri
+
+
+def test_stapel_werden_zu_einer_pdf(tmp_path):
+    """Mehrere Dokumente werden fuer Copilot zu einer Datei gebuendelt."""
+    import pymupdf
+
+    from pdfblack.ui.compare import bundle_pdfs
+
+    pfade = []
+    for nummer in (1, 2):
+        doc = pymupdf.open()
+        seite = doc.new_page()
+        seite.insert_text((72, 72), f"Dokument {nummer}")
+        pfad = tmp_path / f"teil{nummer}.pdf"
+        doc.save(str(pfad))
+        doc.close()
+        pfade.append(pfad)
+
+    ziel = tmp_path / "Unterlagen.pdf"
+    assert bundle_pdfs(pfade, ziel) == ziel
+    doc = pymupdf.open(str(ziel))
+    assert doc.page_count == 2
+    doc.close()
+
+    # Nicht lesbare Dateien allein ergeben kein Buendel.
+    kaputt = tmp_path / "kaputt.pdf"
+    kaputt.write_bytes(b"kein pdf")
+    assert bundle_pdfs([kaputt], tmp_path / "leer.pdf") is None
+
+
+def test_ziehen_zwischen_allen_listen(qt_app, settings_dir, tmp_path):
+    """Auch zurueck: Lebenslauf -> Zeugnisse, Stapel -> Zuletzt geschwaerzt."""
+    from pdfblack.ui import compare
+
+    view = compare.CompareView()
+    leben = _pdf(tmp_path / "lebenslauf.pdf")
+    zeugnis = _pdf(tmp_path / "zeugnis.pdf")
+    mime, event = _drop_event(leben)
+    view.life.dropEvent(event)
+    mime, event = _drop_event(zeugnis)
+    view.certs.dropEvent(event)
+    assert view.life.paths() == [leben] and view.certs.paths() == [zeugnis]
+
+    # Lebenslauf -> Arbeitszeugnisse
+    mime, event = _drop_event(leben)
+    view.certs.dropEvent(event)
+    assert view.life.paths() == [] and leben in view.certs.paths()
+
+    # Arbeitszeugnisse -> Zuletzt geschwaerzt
+    mime, event = _drop_event(leben)
+    view.recent.dropEvent(event)
+    assert leben in view.recent.paths() and leben not in view.certs.paths()
+    assert view.recent.item(0).data(QtCore.Qt.UserRole) == leben
+
+    # und zurueck in einen Stapel
+    mime, event = _drop_event(leben)
+    view.life.dropEvent(event)
+    assert view.life.paths() == [leben] and leben not in view.recent.paths()
+
+    view.deleteLater()
+    qt_app.processEvents()
+
+
+def test_knoepfe_leeren_einzelne_listen(qt_app, settings_dir, tmp_path):
+    """Drei Knoepfe unter der linken Liste leeren je eine Liste."""
+    from pdfblack.ui import compare
+
+    view = compare.CompareView()
+    for name in ("a.pdf", "b.pdf"):
+        mime, event = _drop_event(_pdf(tmp_path / name))
+        view.recent.add_file(str(tmp_path / name))
+    mime, event = _drop_event(_pdf(tmp_path / "leben.pdf"))
+    view.life.dropEvent(event)
+    mime, event = _drop_event(_pdf(tmp_path / "zeugnis.pdf"))
+    view.certs.dropEvent(event)
+
+    knoepfe = [
+        knopf
+        for knopf in view.findChildren(QtWidgets.QPushButton)
+        if knopf.objectName() == "Ghost"
+    ]
+    assert [knopf.text() for knopf in knoepfe] == [
+        "Zuletzt leeren",
+        "Lebenslauf leeren",
+        "Zeugnisse leeren",
+    ]
+
+    knoepfe[1].click()
+    assert view.life.count() == 0
+    assert view.certs.count() == 1 and view.recent.count() == 2
+
+    knoepfe[0].click()
+    assert view.recent.count() == 0
+
+    view.deleteLater()
+    qt_app.processEvents()
+
+
+def test_muellimer_entfernt_nur_aus_der_liste(
+    qt_app, settings_dir, tmp_path, monkeypatch
+):
+    from pdfblack.ui import compare
+
+    datei = _pdf(tmp_path / "zeugnis.pdf")
+    view = compare.CompareView()
+    mime, event = _drop_event(datei)
+    view.certs.dropEvent(event)
+    assert view.certs.count() == 1
+
+    gefragt: list[str] = []
+
+    def frage(*args, **kwargs):
+        gefragt.append(args[1])
+        return QtWidgets.QMessageBox.Yes
+
+    monkeypatch.setattr(compare.QMessageBox, "question", frage)
+    mime, event = _drop_event(datei)
+    view.trash.dropEvent(event)
+
+    assert gefragt and "Wirklich entfernen" in gefragt[0]
+    assert view.certs.count() == 0
+    assert Path(datei).exists()  # Originaldatei bleibt
+
+    view.deleteLater()
+    qt_app.processEvents()
+
+
+def test_schliessen_leert_listen_und_loescht_dateien(
+    qt_app, settings_dir, tmp_path, monkeypatch
+):
+    from pdfblack.ui import compare
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    datei = tmp_path / "geschwaerzt.pdf"
+    datei.write_bytes(b"%PDF-1.4\n")
+    view = compare.CompareView()
+    mime, event = _drop_event(str(datei))
+    view.life.dropEvent(event)
+
+    ordner = compare.handover_folder("Bewerbungen")
+    ordner.mkdir(parents=True)
+    kopie = ordner / "Lebenslauf_geschwaerzt.pdf"
+    kopie.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(
+        compare.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.Yes
+    )
+    view.cleanup_on_close(view)
+
+    assert view.recent.count() == 0 and view.life.count() == 0
+    assert view.certs.count() == 0
+    assert not datei.exists()
+    assert not kopie.exists()
+    assert not ordner.exists()  # leerer Agent-Ordner wird entfernt
+
+    view.deleteLater()
+    qt_app.processEvents()
+
+
+def test_schliessen_behaelt_dateien_bei_abgelehnter_frage(
+    qt_app, settings_dir, tmp_path, monkeypatch
+):
+    from pdfblack.ui import compare
+
+    datei = tmp_path / "behalten.pdf"
+    datei.write_bytes(b"%PDF-1.4\n")
+    view = compare.CompareView()
+    mime, event = _drop_event(str(datei))
+    view.certs.dropEvent(event)
+
+    monkeypatch.setattr(
+        compare.QMessageBox, "question", lambda *a, **k: QtWidgets.QMessageBox.No
+    )
+    view.cleanup_on_close(view)
+
+    assert view.certs.count() == 0  # Listen sind trotzdem geleert
+    assert datei.exists()  # Datei bleibt
+
+    view.deleteLater()
     qt_app.processEvents()

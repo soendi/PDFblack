@@ -116,6 +116,10 @@ QToolTip {
 QFrame#DropZone {
     background: #15181e; border: 2px dashed #303643; border-radius: 16px;
 }
+QFrame#Trash {
+    background: #1a1416; border: 1px dashed #7d3038; border-radius: 9px;
+}
+QFrame#Trash[dragActive="true"] { background: #2a1518; border-color: #e5484d; }
 QFrame#DropZone[dragActive="true"] { border-color: #e5484d; background: #1c1a1e; }
 QProgressBar {
     background: #1d2027; border: 1px solid #2b313c; border-radius: 6px;

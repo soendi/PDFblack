@@ -1,6 +1,14 @@
-## PDFblack 1.1.3
+## PDFblack 1.1.4
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.1.4
+
+- **Dateien hin und her ziehen:** In PDFcompare lassen sich Dateien jetzt in jede Richtung verschieben – von „Lebenslauf“ nach „Arbeitszeugnisse“, aus beiden Stapeln zurück nach „Zuletzt geschwärzt“ und von dort wieder in einen Stapel. Jede Datei steht weiterhin nur in einer Liste.
+- **Listen einzeln leeren:** Unter „Zuletzt geschwärzt“ liegen drei Knöpfe, die je eine der drei Listen leeren. Die Dateien auf dem Rechner bleiben dabei unangetastet.
+- **Mülleimer:** Unter „Arbeitszeugnisse“ gibt es eine kleine Ablage mit rotem Mülleimer. Eine dorthin gezogene Datei wird nach der Rückfrage „Wirklich entfernen?“ aus der Liste genommen – die Originaldatei bleibt erhalten.
+- **Aufräumen beim Beenden:** Beim Schließen von PDFblack werden alle drei Listen geleert. Danach fragt das Programm, ob auch die geschwärzten Dateien gelöscht werden sollen; Kopien, die bereits an einen Copilot-Agenten übergeben wurden, verschwinden dabei aus dem Agent-Ordner.
+- **Übergabe an Copilot:** Der Knopf übergibt die Unterlagen jetzt mit Frage und Datei an Copilot (`ms-copilot:chat?q=…&file=…`); mehrere Dokumente werden vorher zu einer PDF gebündelt. Bleibt der Aufruf ohne Wirkung, öffnet sich Copilot wie bisher und die Dateien liegen im Übergabeordner.
 
 ### Neu in 1.1.3
 
@@ -72,7 +80,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.3-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.4-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
