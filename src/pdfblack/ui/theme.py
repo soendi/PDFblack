@@ -46,6 +46,11 @@ QPushButton#Primary:pressed { background: #d13d42; }
 QPushButton#Primary:disabled { background: #3a2327; border-color: #40282c; color: #7c5b5e; }
 QPushButton#Ghost { background: transparent; border: 1px solid #2b313c; color: #9aa3b2; }
 QPushButton#Ghost:hover { background: #1d2027; color: #e6e8ec; }
+QPushButton#Mini {
+    background: transparent; border: 1px solid #2b313c; color: #9aa3b2;
+    border-radius: 6px; padding: 1px 9px; font-size: 11px;
+}
+QPushButton#Mini:hover { background: #1d2027; color: #e6e8ec; border-color: #3a4150; }
 QPushButton#Agent {
     background: #4d8dff; border: 1px solid #6aa1ff; color: #ffffff; font-weight: 600;
     padding: 8px 12px;

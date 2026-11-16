@@ -338,7 +338,7 @@ def test_ziehen_zwischen_allen_listen(qt_app, settings_dir, tmp_path):
 
 
 def test_knoepfe_leeren_einzelne_listen(qt_app, settings_dir, tmp_path):
-    """Drei Knoepfe unter der linken Liste leeren je eine Liste."""
+    """Je ein Knopf leert genau eine Liste - links und bei jedem Stapel."""
     from pdfblack.ui import compare
 
     view = compare.CompareView()
@@ -350,23 +350,101 @@ def test_knoepfe_leeren_einzelne_listen(qt_app, settings_dir, tmp_path):
     mime, event = _drop_event(_pdf(tmp_path / "zeugnis.pdf"))
     view.certs.dropEvent(event)
 
-    knoepfe = [
-        knopf
-        for knopf in view.findChildren(QtWidgets.QPushButton)
-        if knopf.objectName() == "Ghost"
-    ]
+    knoepfe = view.clear_buttons
     assert [knopf.text() for knopf in knoepfe] == [
         "Zuletzt leeren",
-        "Lebenslauf leeren",
-        "Zeugnisse leeren",
+        "Leeren",
+        "Leeren",
+        "Leeren",
+        "Leeren",
     ]
 
-    knoepfe[1].click()
+    knoepfe[1].click()  # Lebenslauf
     assert view.life.count() == 0
     assert view.certs.count() == 1 and view.recent.count() == 2
 
-    knoepfe[0].click()
+    knoepfe[0].click()  # Zuletzt geschwaerzt
     assert view.recent.count() == 0
+
+    view.deleteLater()
+    qt_app.processEvents()
+
+
+def test_vier_stapel_gleich_hoch(qt_app, settings_dir, tmp_path):
+    """Bewerbung und Diplome sind Stapel wie die anderen - und alle gleich hoch."""
+    from PySide6 import QtWidgets
+
+    from pdfblack.ui import compare
+
+    view = compare.CompareView()
+    view.resize(1400, 1000)
+    view.show()
+    qt_app.processEvents()
+
+    titel = [
+        label.text()
+        for label in view.findChildren(QtWidgets.QLabel)
+        if label.objectName() == "SectionLabel"
+    ]
+    assert titel[:5] == [
+        "Zuletzt geschwärzt",
+        "Lebenslauf",
+        "Arbeitszeugnisse",
+        "Bewerbung",
+        "Diplome",
+    ]
+
+    hoehen = [liste.height() for liste in view.stacks]
+    assert max(hoehen) - min(hoehen) <= 2, hoehen
+    assert all(hoehe > 80 for hoehe in hoehen), hoehen
+
+    # Bewerbung und Diplome verhalten sich wie die anderen Stapel.
+    antrag = _pdf(tmp_path / "anschreiben.pdf")
+    diplom = _pdf(tmp_path / "diplom.pdf")
+    view.clear_all()
+    view.remember(antrag)
+    view.remember(diplom)
+    mime, event = _drop_event(antrag)
+    view.application.dropEvent(event)
+    mime, event = _drop_event(diplom)
+    view.diplome.dropEvent(event)
+
+    assert _pfade(view.application) == [_same(antrag)]
+    assert _pfade(view.diplome) == [_same(diplom)]
+    assert view.recent.count() == 0
+
+    view.clear_buttons[3].click()  # Bewerbung leeren
+    assert view.application.count() == 0
+    assert view.diplome.count() == 1
+
+    view.deleteLater()
+    qt_app.processEvents()
+
+
+def test_verschieben_laesst_die_uebrigen_dateien_links(
+    qt_app, settings_dir, tmp_path
+):
+    """Eine verschobene Datei darf die anderen nicht mitnehmen."""
+    from PySide6 import QtCore
+
+    from pdfblack.ui import compare
+
+    view = compare.CompareView()
+    view.clear_all()
+    for name in ("eins.pdf", "zwei.pdf", "drei.pdf"):
+        view.remember(_pdf(tmp_path / name))
+    assert view.recent.count() == 3
+
+    mime, event = _drop_event(str(tmp_path / "zwei.pdf"))
+    view.certs.dropEvent(event)
+
+    # remember() legt neue Dateien oben ab: zuletzt kam "drei.pdf".
+    rest = [view.recent.item(i).text() for i in range(view.recent.count())]
+    assert rest == ["drei.pdf", "eins.pdf"], rest
+    assert _pfade(view.certs) == [_same(str(tmp_path / "zwei.pdf"))]
+
+    # Qts eigenes Aufraeumen nach einem Move-Drag darf nicht greifen.
+    assert view.recent.defaultDropAction() == QtCore.Qt.CopyAction
 
     view.deleteLater()
     qt_app.processEvents()
@@ -499,3 +577,23 @@ def test_einstellungen_schalten_die_pruefung(qt_app, settings_dir):
     for widget in (dialog, wieder):
         widget.deleteLater()
     qt_app.processEvents()
+
+
+def test_uebergabe_beschriftet_auch_bewerbung_und_diplome(tmp_path):
+    """Die neuen Stapel bekommen eigene Praefixe fuer Copilot."""
+    from pdfblack.ui import compare
+
+    ordner = tmp_path / "quelle"
+    ordner.mkdir()
+    antrag = _pdf(ordner / "anschreiben.pdf")
+    diplom = _pdf(ordner / "diplom_informatik.pdf")
+
+    ziel = compare.handover_folder("Bewerbungen")
+    dateien = compare.handover_files(
+        ziel, [], [], bewerbung=[antrag], diplome=[diplom]
+    )
+
+    assert sorted(pfad.name for pfad in dateien) == [
+        "Bewerbung_anschreiben.pdf",
+        "Diplom_diplom_informatik.pdf",
+    ]

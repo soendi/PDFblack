@@ -1,4 +1,4 @@
-"""PDFcompare: die zuletzt geschwaerzten Dateien auf zwei Stapel verteilen."""
+"""PDFcompare: die zuletzt geschwaerzten Dateien auf Stapel verteilen."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 import pymupdf
 
 from PySide6.QtCore import QMimeData, QRectF, Qt, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPixmap
+from PySide6.QtGui import QColor, QDesktopServices, QDrag, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -32,14 +32,19 @@ from .review import ReviewDialog
 RECENT_KEY = "compare/recent"
 LIFE_KEY = "compare/lebenslauf"
 CERT_KEY = "compare/arbeitszeugnisse"
+APPLICATION_KEY = "compare/bewerbung"
+DIPLOMA_KEY = "compare/diplome"
 MAX_RECENT = 30
 
 LIFE_PREFIX = "Lebenslauf"
 CERT_PREFIX = "Arbeitszeugnis"
+APPLICATION_PREFIX = "Bewerbung"
+DIPLOMA_PREFIX = "Diplom"
 
 HANDOVER_PROMPT = (
-    "Hier sind Lebenslauf und Arbeitszeugnisse. Bitte lies die Unterlagen "
-    "und fasse sie zusammen."
+    "Hier sind die Unterlagen zur Bewerbung: Lebenslauf, Arbeitszeugnisse, "
+    "Bewerbungsschreiben und Diplome. Bitte lies die Unterlagen und fasse sie "
+    "zusammen."
 )
 
 
@@ -58,13 +63,19 @@ def handover_folder(agent: str) -> Path:
 
 
 def handover_files(
-    folder: Path, life: list[str], certs: list[str]
+    folder: Path,
+    life: list[str],
+    certs: list[str],
+    bewerbung: list[str] = (),
+    diplome: list[str] = (),
 ) -> list[Path]:
-    """Dateien so kopieren, dass Copilot Lebenslauf und Zeugnisse erkennt.
+    """Dateien so kopieren, dass Copilot die Art der Unterlage erkennt.
 
     Aus ``bewerbung.pdf`` im Stapel Lebenslauf wird ``Lebenslauf_bewerbung.pdf``,
-    aus dem Stapel Arbeitszeugnisse ``Arbeitszeugnis_bewerbung.pdf``. Der Ordner
-    wird vorher geleert, damit ein zweiter Klick dieselben Namen erzeugt.
+    aus dem Stapel Arbeitszeugnisse ``Arbeitszeugnis_bewerbung.pdf``, aus den
+    Stapeln Bewerbung und Diplome ``Bewerbung_bewerbung.pdf`` bzw.
+    ``Diplom_bewerbung.pdf``. Der Ordner wird vorher geleert, damit ein zweiter
+    Klick dieselben Namen erzeugt.
     """
     folder.mkdir(parents=True, exist_ok=True)
     for alt in folder.glob("*.pdf"):
@@ -73,7 +84,12 @@ def handover_files(
         except OSError:
             pass
     kopiert: list[Path] = []
-    for prefix, pfade in ((LIFE_PREFIX, life), (CERT_PREFIX, certs)):
+    for prefix, pfade in (
+        (LIFE_PREFIX, life),
+        (CERT_PREFIX, certs),
+        (APPLICATION_PREFIX, bewerbung),
+        (DIPLOMA_PREFIX, diplome),
+    ):
         for pfad in pfade:
             quelle = Path(pfad)
             if not quelle.is_file():
@@ -140,8 +156,13 @@ def delete_redacted(paths: list[str]) -> tuple[int, list[str]]:
     for folder in sorted(entry for entry in base.iterdir() if entry.is_dir()):
         kopien = [folder / "Unterlagen.pdf"]
         for stem in stems:
-            kopien.append(folder / f"{LIFE_PREFIX}_{stem}.pdf")
-            kopien.append(folder / f"{CERT_PREFIX}_{stem}.pdf")
+            for prefix in (
+                LIFE_PREFIX,
+                CERT_PREFIX,
+                APPLICATION_PREFIX,
+                DIPLOMA_PREFIX,
+            ):
+                kopien.append(folder / f"{prefix}_{stem}.pdf")
         for kopie in kopien:
             try:
                 if kopie.is_file():
@@ -192,10 +213,26 @@ class PathList(QListWidget):
         self.setAcceptDrops(True)
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDrop)
-        self.setDefaultDropAction(Qt.MoveAction)
+        # Kopie statt Verschieben: das Umhaengen macht die Ansicht selbst.
+        self.setDefaultDropAction(Qt.CopyAction)
         self.setDropIndicatorShown(True)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def startDrag(self, supported_actions) -> None:  # noqa: N802
+        """Ziehen, ohne dass Qt Zeilen aus der Quellliste loescht.
+
+        Nach einem Drag mit ``MoveAction`` raeumt Qt in der Quellliste selbst
+        auf (``clearOrRemove``); lagen mehrere Dateien in der Liste, war sie
+        danach komplett leer. Das Verschieben zwischen den Listen macht hier
+        die Ansicht, deshalb laeuft der Drag als Kopie.
+        """
+        items = self.selectedItems()
+        if not items:
+            return
+        drag = QDrag(self)
+        drag.setMimeData(self.mimeData(items))
+        drag.exec(Qt.CopyAction, Qt.CopyAction)
 
     def mimeData(self, items) -> QMimeData:  # type: ignore[override]
         mime = QMimeData()
@@ -406,7 +443,7 @@ class TrashZone(QFrame):
 
 
 class CompareView(QWidget):
-    """Linke Spalte: zuletzt geschwaerzt, rechte Spalte: zwei Stapel."""
+    """Linke Spalte: zuletzt geschwaerzt, rechte Spalte: vier Stapel."""
 
     settingsRequested = Signal()
     message = Signal(str)
@@ -428,43 +465,58 @@ class CompareView(QWidget):
         self.recent.setToolTip("Dateien zwischen den Listen hin und her ziehen")
         self.life = DropList()
         self.certs = DropList()
+        self.application = DropList()
+        self.diplome = DropList()
+        self.stacks: tuple[DropList, ...] = (
+            self.life,
+            self.certs,
+            self.application,
+            self.diplome,
+        )
+        self.clear_buttons: list[QPushButton] = []
         left.addWidget(self.recent, 1)
 
-        # Drei Knoepfe: je eine Liste leeren (Dateien bleiben auf dem Rechner).
-        leer_layout = QHBoxLayout()
-        leer_layout.setSpacing(6)
-        for text, liste in (
-            ("Zuletzt leeren", self.recent),
-            ("Lebenslauf leeren", self.life),
-            ("Zeugnisse leeren", self.certs),
-        ):
-            knopf = QPushButton(text)
-            knopf.setObjectName("Ghost")
-            knopf.clicked.connect(lambda _=False, ziel=liste: self.clear_list(ziel))
-            leer_layout.addWidget(knopf)
-        left.addLayout(leer_layout)
+        # Knopf fuer die linke Liste (Dateien bleiben auf dem Rechner).
+        zuletzt_leeren = QPushButton("Zuletzt leeren")
+        zuletzt_leeren.setObjectName("Ghost")
+        zuletzt_leeren.clicked.connect(lambda: self.clear_list(self.recent))
+        self.clear_buttons.append(zuletzt_leeren)
+        left.addWidget(zuletzt_leeren, 0)
 
         hint = QLabel("Dateien zwischen den Listen ziehen; Entf entfernt einen Eintrag.")
         hint.setObjectName("Hint")
         left.addWidget(hint)
         layout.addLayout(left, 1)
 
-        # --- rechte Seite --------------------------------------------
+        # --- rechte Seite: vier gleich hohe Stapel --------------------
         right = QVBoxLayout()
         right.setSpacing(8)
 
-        life_title = QLabel("Lebenslauf")
-        life_title.setObjectName("SectionLabel")
-        right.addWidget(life_title)
-        self.life.setMaximumHeight(170)
-        right.addWidget(self.life, 0)
+        for titel, liste in (
+            ("Lebenslauf", self.life),
+            ("Arbeitszeugnisse", self.certs),
+            ("Bewerbung", self.application),
+            ("Diplome", self.diplome),
+        ):
+            kopf = QHBoxLayout()
+            kopf.setSpacing(6)
+            label = QLabel(titel)
+            label.setObjectName("SectionLabel")
+            leeren = QPushButton("Leeren")
+            leeren.setObjectName("Mini")
+            leeren.setToolTip(
+                f"Liste „{titel}“ leeren – die Dateien bleiben auf dem Rechner"
+            )
+            leeren.clicked.connect(lambda _=False, ziel=liste: self.clear_list(ziel))
+            self.clear_buttons.append(leeren)
+            kopf.addWidget(label)
+            kopf.addStretch(1)
+            kopf.addWidget(leeren)
+            right.addLayout(kopf)
+            # Gleicher Anteil am freien Platz: alle Stapel gleich hoch.
+            right.addWidget(liste, 1)
 
-        cert_title = QLabel("Arbeitszeugnisse")
-        cert_title.setObjectName("SectionLabel")
-        right.addWidget(cert_title)
-        right.addWidget(self.certs, 1)
-
-        # Kleine Ablage unter den Zeugnissen.
+        # Kleine Ablage unter den Stapeln.
         self.trash = TrashZone()
         right.addWidget(self.trash, 0)
 
@@ -487,7 +539,7 @@ class CompareView(QWidget):
 
         layout.addLayout(right, 1)
 
-        for liste in (self.recent, self.life, self.certs):
+        for liste in (self.recent, *self.stacks):
             liste.changed.connect(self._store)
             liste.dropped.connect(
                 lambda paths, ziel=liste: self._moved(ziel, paths)
@@ -539,16 +591,20 @@ class CompareView(QWidget):
         """Stapel benannt bereitlegen und Copilot mit dem Agenten öffnen."""
         life = self.life.paths()
         certs = self.certs.paths()
-        if not life and not certs:
+        bewerbung = self.application.paths()
+        diplome = self.diplome.paths()
+        if not (life or certs or bewerbung or diplome):
             self.message.emit(
-                "Keine Dateien zum Übergeben: erst Lebenslauf und Zeugnisse zuordnen."
+                "Keine Dateien zum Übergeben: erst den Stapeln Dateien zuordnen."
             )
             return
 
         folder = handover_folder(entry["name"])
-        dateien = handover_files(folder, life, certs)
+        dateien = handover_files(
+            folder, life, certs, bewerbung=bewerbung, diplome=diplome
+        )
         if not dateien:
-            self.message.emit("Die Dateien der beiden Stapel wurden nicht gefunden.")
+            self.message.emit("Die Dateien der Stapel wurden nicht gefunden.")
             return
 
         QApplication.clipboard().setText("\n".join(str(pfad) for pfad in dateien))
@@ -583,7 +639,9 @@ class CompareView(QWidget):
         self.recent.clear()
         self.life.set_files(_read_list(LIFE_KEY))
         self.certs.set_files(_read_list(CERT_KEY))
-        zugeordnet = {_norm(path) for path in self.life.paths() + self.certs.paths()}
+        self.application.set_files(_read_list(APPLICATION_KEY))
+        self.diplome.set_files(_read_list(DIPLOMA_KEY))
+        zugeordnet = {_norm(path) for path in self._stack_paths()}
         for path in _read_list(RECENT_KEY):
             if not os.path.exists(path) or _norm(path) in zugeordnet:
                 continue
@@ -597,10 +655,14 @@ class CompareView(QWidget):
         # Die Pruefung ist fakultativ: ohne Schalter kein Knopf.
         self.review_button.setVisible(preferences.review_enabled())
 
+    def _stack_paths(self) -> list[str]:
+        """Alle Dateien aus den vier Stapeln."""
+        return [path for liste in self.stacks for path in liste.paths()]
+
     def remember(self, path: str) -> None:
         """Eine frisch geschwaerzte Datei oben in die Liste aufnehmen."""
         path = os.path.abspath(path)
-        zugeordnet = {_norm(item) for item in self.life.paths() + self.certs.paths()}
+        zugeordnet = {_norm(item) for item in self._stack_paths()}
         if _norm(path) in zugeordnet:
             # Steht schon in einem Stapel - eine Datei ist nur einmal gelistet.
             return
@@ -615,7 +677,7 @@ class CompareView(QWidget):
             return
         verschoben = [path for path in paths if os.path.exists(path)]
         for path in verschoben:
-            for liste in (self.recent, self.life, self.certs):
+            for liste in (self.recent, *self.stacks):
                 if liste is not target:
                     liste.remove_path(path)
         if target is self.recent and verschoben:
@@ -632,7 +694,7 @@ class CompareView(QWidget):
 
     def _sync_allowed(self) -> None:
         """Die linke Liste nimmt nur zurueck, was in einem Stapel steht."""
-        self.recent.allow(set(self.life.paths()) | set(self.certs.paths()))
+        self.recent.allow(self._stack_paths())
 
     def _store(self) -> None:
         if self._refreshing:
@@ -640,6 +702,8 @@ class CompareView(QWidget):
         _write_list(RECENT_KEY, self.recent.paths())
         _write_list(LIFE_KEY, self.life.paths())
         _write_list(CERT_KEY, self.certs.paths())
+        _write_list(APPLICATION_KEY, self.application.paths())
+        _write_list(DIPLOMA_KEY, self.diplome.paths())
 
     def clear_list(self, liste: "PathList") -> None:
         """Eine Liste leeren - die Dateien auf dem Rechner bleiben."""
@@ -650,12 +714,18 @@ class CompareView(QWidget):
         self._store()
 
     def clear_all(self) -> None:
-        """Alle drei Listen leeren, auch die gespeicherten."""
+        """Alle Listen leeren, auch die gespeicherten."""
         self._refreshing = True
         try:
-            for liste in (self.recent, self.life, self.certs):
+            for liste in (self.recent, *self.stacks):
                 liste.clear()
-            for key in (RECENT_KEY, LIFE_KEY, CERT_KEY):
+            for key in (
+                RECENT_KEY,
+                LIFE_KEY,
+                CERT_KEY,
+                APPLICATION_KEY,
+                DIPLOMA_KEY,
+            ):
                 _write_list(key, [])
             self._sync_allowed()
         finally:
@@ -677,7 +747,7 @@ class CompareView(QWidget):
         if antwort != QMessageBox.Yes:
             return
         for path in paths:
-            for liste in (self.recent, self.life, self.certs):
+            for liste in (self.recent, *self.stacks):
                 liste.remove_path(path)
         self._sync_allowed()
         self._store()
@@ -685,9 +755,7 @@ class CompareView(QWidget):
 
     def cleanup_on_close(self, parent: QWidget) -> None:
         """Beim Beenden die Listen leeren und nach den Dateien fragen."""
-        paths = list(
-            dict.fromkeys(self.recent.paths() + self.life.paths() + self.certs.paths())
-        )
+        paths = list(dict.fromkeys(self.recent.paths() + self._stack_paths()))
         self.clear_all()
         if not paths:
             return
@@ -695,7 +763,7 @@ class CompareView(QWidget):
         antwort = QMessageBox.question(
             parent,
             "Listen geleert",
-            "Die drei Listen sind geleert.\n\nAuch die geschwärzten Dateien auf dem "
+            "Die Listen sind geleert.\n\nAuch die geschwärzten Dateien auf dem "
             f"Rechner löschen ({len(paths)})? Kopien im Copilot-Übergabeordner "
             "werden dann ebenfalls entfernt.",
             QMessageBox.Yes | QMessageBox.No,

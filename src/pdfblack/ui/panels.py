@@ -36,6 +36,7 @@ from ..core.models import Category, Finding
 CATEGORY_GROUPS: dict[Category, str] = {
     Category.PERSON: "Personen",
     Category.ADDRESS: "Adressen",
+    Category.COMPANY: "Firmen",
     Category.POSTAL: "PLZ / Ort",
     Category.ID: "Nummern / IDs",
     Category.CONTACT: "Kontakt",

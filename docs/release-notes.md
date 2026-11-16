@@ -1,6 +1,17 @@
-## PDFblack 1.2.2
+## PDFblack 1.3.0
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.0
+
+- **PDFocr – drittes Programm in der Kopfzeile:** Grüner Knopf mit „T“, Untertitel „Liest aus Bildscans den Text aus PDF Dateien.“ Beim Klick fährt der blaue Knopf wie gewohnt nach links, der grüne bleibt genau dort stehen, wo der Text des blauen anfängt; sichtbar ist immer nur der Text des aktiven Programms.
+- **Bildscans werden automatisch ausgelesen:** Öffnet man in PDFblack eine Datei ohne Textebene, wechselt das Programm selbstständig zu PDFocr und startet die Erkennung. Der erkannte Text wird **unsichtbar hinter das Bild** gelegt (300 dpi, Wortkästen pixelgenau in PDF-Punkte zurückgerechnet, waagerecht auf die Kastenbreite gestaucht) – eine spätere Schwärzung trifft dieselbe Stelle im Scan und ersetzt dort auch die Bildpunkte.
+- **Wörterbuch-Korrektur:** Vor dem Einsetzen laufen die erkannten Wörter gegen ein deutsches Wörterbuch (339 000 Wörter, offline). Korrigiert werden nur klein geschriebene Wörter, die im Dokument einmal vorkommen und genau einen nahen Vorschlag haben – Namen, Straßen und Firmen bleiben unangetastet. Abschaltbar über „Rechtschreibung prüfen (Wörterbuch)“.
+- **Amtliche PLZ-Liste:** 3 371 Schweizer Postleitzahlen mit ihren Ortschaften (swisstopo + GeoNames, inkl. Liechtenstein) entscheiden, was eine PLZ ist. Eine Jahreszahl liegt immer zwischen dem aktuellen Jahr und dem aktuellen Jahr minus 70 (2026 also 1956–2026); ausserhalb ist eine vierstellige Zahl eine Postleitzahl, innerhalb muss der Ort dazu passen.
+- **PLZ und Ort gehören in eine Zeile:** Steht eine Zahl allein und darunter ein Name, ist er eine **Firma** (neue Kategorie) – „2026 / Muster AG“ genauso wie „9435 / Muster AG“. Berufe und Überschriften darunter bleiben stehen.
+- **Berufsbezeichnungen werden nicht geschwärzt:** Rund 11 500 Berufe in männlicher und weiblicher Form (Wikidata, CC0, plus gängige Berufe) gelten weder als Name noch als Adresse – „Vorarbeiterin von 10 Dachdecker“ ergibt keinen Treffer mehr. Nachnamen, die zugleich Beruf sind („Herr Müller“, „Frau Koch“), zählen weiter als Namen.
+- **Hausnummern enden mit der Zahl:** Folgt nach der Nummer noch ein ganzes Wort („Hauptstraße 12 Telefon …“), ist es keine Adresse; „in 8000 Zürich“ bleibt erlaubt.
+- **PDFcompare: vier Stapel:** Lebenslauf, Arbeitszeugnisse, Bewerbung und Diplome sind gleich hoch, jeder Stapel hat einen eigenen „Leeren“-Knopf, und das Verschieben einer Datei lässt die übrigen Dateien links stehen (bisher leerte sich die Liste). Die Übergabe an die Agenten nimmt alle vier Stapel mit und benennt sie `Lebenslauf_…`, `Arbeitszeugnis_…`, `Bewerbung_…`, `Diplom_…`.
 
 ### Neu in 1.2.2
 
@@ -96,7 +107,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.2.2-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.0-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 

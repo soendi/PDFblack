@@ -446,6 +446,83 @@ def test_jahreszahlen_sind_keine_postleitzahlen(tmp_path):
     assert "CH-3000 Bern" in found
 
 
+def test_jahresband_ist_aktuelles_jahr_minus_siebzig():
+    """Eine Jahreszahl liegt immer zwischen heute und heute minus 70."""
+    from datetime import date
+
+    from pdfblack.core.rules import ist_jahreszahl
+
+    heute = date.today().year
+    assert ist_jahreszahl(str(heute))
+    assert ist_jahreszahl(str(heute - 70))
+    assert not ist_jahreszahl(str(heute - 71))
+    assert not ist_jahreszahl(str(heute + 1))
+    assert not ist_jahreszahl("9435")
+    assert not ist_jahreszahl("20 26")
+
+
+def test_firma_unter_zahl(tmp_path):
+    """PLZ und Ort stehen in einer Zeile - sonst ist der Name eine Firma.
+
+    Steht eine Zahl allein und darunter ein Name, ist der Name eine Firma:
+    bei einer Jahreszahl (2026) genauso wie bei einer PLZ (9435). Ein Beruf
+    oder eine Ueberschrift ist keine Firma, und passt der Ort zur PLZ, ist es
+    eine Adresse.
+    """
+    path = tmp_path / "firmen.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    zeilen = [
+        "Lebenslauf",
+        "2026",
+        "Muster AG",
+        "2019",
+        "Muster GmbH",
+        "2025",
+        "Berufserfahrung",
+        "2024",
+        "Dachdecker",
+        "9435",
+        "Muster Verwaltung",
+        "9435",
+        "Heerbrugg",
+        "1950",
+        "Sion",
+        "2000 Neuchatel",
+    ]
+    for index, zeile in enumerate(zeilen):
+        page.insert_text((60, 100 + index * 22), zeile, fontsize=11, fontname="helv")
+    doc.save(str(path))
+    doc.close()
+
+    result = run_detection(
+        str(path),
+        DetectionOptions(use_ai=False, ai_entities=(), rule_groups=("address", "ch_postal")),
+    )
+    found = texts(result.findings)
+
+    # Jahreszahl + Name und PLZ + fremder Name: beides eine Firma.
+    for firma in ("Muster AG", "Muster GmbH", "Muster Verwaltung"):
+        assert firma in found, (firma, found)
+        assert all(
+            f.category is Category.COMPANY for f in result.findings if f.text == firma
+        ), firma
+    # Ueberschrift und Beruf sind keine Firma.
+    assert "Berufserfahrung" not in found
+    assert "Dachdecker" not in found
+    # Passt der Ort zur PLZ, bleibt es eine Adresse (1950 liegt ausserhalb
+    # des Jahresbands und ist deshalb eine PLZ).
+    assert "9435\nHeerbrugg" in [f.text for f in result.findings] or any(
+        item.startswith("9435") and "Heerbrugg" in item for item in found
+    ), found
+    assert any(item.startswith("1950") and "Sion" in item for item in found), found
+    # Jahreszahlen werden nicht geschwaerzt.
+    assert not any(
+        jahr in item for item in found for jahr in ("2026", "2019", "2025", "2024")
+    ), found
+    assert "2000 Neuchatel" in found
+
+
 def test_ki_ort_mit_jahreszahl_ist_kein_ort():
     from pdfblack.core.detect import _ai_location_is_date
 
@@ -453,3 +530,61 @@ def test_ki_ort_mit_jahreszahl_ist_kein_ort():
         assert _ai_location_is_date(jahr), jahr
     for ort in ("Sion", "8045 Zürich", "Neuchâtel"):
         assert not _ai_location_is_date(ort), ort
+
+
+def test_tldextract_cache_liegt_im_benutzerordner(tmp_path, monkeypatch):
+    """In "Program Files" ist der Paketordner schreibgeschuetzt (WinError 5)."""
+    import os
+    from pathlib import Path
+
+    from pdfblack.core import detect
+
+    vorher = os.environ.pop("TLDEXTRACT_CACHE", None)
+    try:
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+        pfad = detect.prepare_tldextract()
+
+        assert Path(pfad).is_dir()
+        assert Path(pfad).parts[-2:] == ("PDFblack", "tldextract")
+        assert os.environ["TLDEXTRACT_CACHE"] == pfad
+    finally:
+        os.environ.pop("TLDEXTRACT_CACHE", None)
+        if vorher is not None:
+            os.environ["TLDEXTRACT_CACHE"] = vorher
+
+
+def test_tldextract_behaelt_einen_gesetzten_cache(tmp_path, monkeypatch):
+    from pdfblack.core import detect
+
+    eigen = tmp_path / "eigener-cache"
+    monkeypatch.setenv("TLDEXTRACT_CACHE", str(eigen))
+
+    assert detect.prepare_tldextract() == str(eigen)
+    assert not eigen.exists()  # nichts angelegt, was der Benutzer nicht wollte
+
+
+def test_tldextract_weicht_auf_temporaeren_ordner_aus(tmp_path, monkeypatch):
+    """Ist der Benutzerordner nicht beschreibbar, muss es trotzdem klappen."""
+    import os
+    from pathlib import Path
+
+    from pdfblack.core import detect
+
+    blockiert = tmp_path / "blockiert"
+    blockiert.write_text("kein Ordner", encoding="utf-8")
+
+    vorher = os.environ.pop("TLDEXTRACT_CACHE", None)
+    try:
+        monkeypatch.setenv("LOCALAPPDATA", str(blockiert))
+        monkeypatch.setenv("XDG_CACHE_HOME", str(blockiert))
+        monkeypatch.setenv("HOME", str(blockiert))
+        pfad = detect.prepare_tldextract()
+
+        assert pfad
+        assert Path(pfad).is_dir()
+        assert str(blockiert) not in pfad
+        assert os.environ["TLDEXTRACT_CACHE"] == pfad
+    finally:
+        os.environ.pop("TLDEXTRACT_CACHE", None)
+        if vorher is not None:
+            os.environ["TLDEXTRACT_CACHE"] = vorher

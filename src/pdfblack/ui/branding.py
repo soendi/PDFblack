@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPixmap
 
 
 def _pixmap(size: int) -> QPixmap:
@@ -76,6 +76,33 @@ def _compare_pixmap(size: int) -> QPixmap:
     return pixmap
 
 
+def _ocr_pixmap(size: int) -> QPixmap:
+    """Symbol fuer PDFocr: gruenes Quadrat mit weissem T."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    s = float(size)
+    gradient = QLinearGradient(0.0, 0.0, s, s)
+    gradient.setColorAt(0.0, QColor("#3ecf8e"))
+    gradient.setColorAt(1.0, QColor("#126b45"))
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(gradient)
+    painter.drawRoundedRect(QRectF(0, 0, s, s), s * 0.22, s * 0.22)
+
+    # Das T steht fuer den Text, der aus dem Bildscan gelesen wird.
+    font = QFont("DejaVu Sans")
+    font.setPixelSize(int(s * 0.62))
+    font.setWeight(QFont.Weight.Bold)
+    painter.setFont(font)
+    painter.setPen(QColor("#f6f7f9"))
+    painter.drawText(QRectF(0, -s * 0.03, s, s), Qt.AlignCenter, "T")
+
+    painter.end()
+    return pixmap
+
+
 def app_icon() -> QIcon:
     icon = QIcon()
     for size in (16, 24, 32, 48, 64, 128, 256):
@@ -89,3 +116,7 @@ def logo_pixmap(size: int = 34) -> QPixmap:
 
 def compare_logo_pixmap(size: int = 34) -> QPixmap:
     return _compare_pixmap(size)
+
+
+def ocr_logo_pixmap(size: int = 34) -> QPixmap:
+    return _ocr_pixmap(size)

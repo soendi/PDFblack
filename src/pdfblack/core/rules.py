@@ -8,8 +8,12 @@ wie "Personalnummer" oder "Ausweisnummer".
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 
+from . import berufe as berufs_liste
+from . import plz as plz_liste
 from .models import Category
 
 
@@ -26,6 +30,8 @@ class Rule:
     # Schweizer PLZ brauchen Gross-/Kleinschreibung, sonst wuerde jede Zahl
     # mit folgendem Substantiv als Ort gelten.
     case_sensitive: bool = False
+    # Nachtraegliche Pruefung des Treffers, z. B. gegen die amtliche PLZ-Liste.
+    validate: Callable[[str], bool] | None = None
 
 
 _STREET_SUFFIX = (
@@ -39,6 +45,14 @@ _HOUSE_NO = r"\d{1,4}\s?[a-zA-Z]?(?:[-/]\d{1,4})?"
 # Hausnummer hinter einem Strassennamen ohne deutsches Suffix
 # ("Rue du Lac 12", "Unter den Linden 5", "Hafenpromenade 3a").
 _HOUSE_NO_SHORT = r"\d{1,3}(?:[ \t]?[a-zA-Z])?(?:[ \t]?[-/][ \t]?\d{1,2})?"
+# Nach der Hausnummer darf kein ganzes Wort folgen: "Vorarbeiterin von 10
+# Dachdecker" ist keine Adresse. Verbindungen wie "in 8000 Zuerich" bleiben
+# erlaubt, damit Adressen mitten im Satz weiter gefunden werden.
+_HOUSE_NEXT_OK = r"(?i:in|im|bei|an|am|zu|zum|zur|und|oder|bzw|sowie|wohnhaft)"
+_HOUSE_END = (
+    rf"(?![ \t]+(?!{_HOUSE_NEXT_OK}\b)"
+    r"[A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df])"
+)
 _HOUSE_NO_STOP = (
     "insgesamt|gesamt|summe|betrag|saldo|total|netto|brutto|umsatz|mwst|steuer|"
     "durchwahl|abteilung|postfach|postleitzahl|plz|betreff|betrifft|police|unsere|"
@@ -98,19 +112,147 @@ _CH_CITY_WORD = (
 # "4711-2233" und "PE-8842/2024" sind Nummern, keine Postleitzahlen.
 _CH_PLZ_LEAD = r"(?<![\d\w\-/.'\u2019])"
 _CH_PLZ = r"(?:1\d{3}|[2-9]\d{3})"
-# Vierstellige Zahlen von 1900 bis 2099 sind in Bewerbungen fast immer
-# Jahreszahlen ("2026 Muster AG", "10/2025 - 05/2026"). Als PLZ zaehlen sie
-# nur mit CH-Praefix oder wenn ein Ort folgt, den es in dieser Region gibt.
-_CH_JAHRBAND = r"(?:19|20)\d{2}"
-_CH_PLZ_FREI = r"(?:1[0-8]\d{2}|(?:2[1-9]|[3-9]\d)\d{2})"
-_CH_ORTE_JAHRBAND = (
-    # Neuenburg und Wallis: die einzigen Gegenden mit PLZ im Jahresband.
-    "Neuchâtel|Neuenburg|Neuchatel|Sion|Martigny|Monthey|Colombier|Peseux|"
-    "Corcelles|Hauterive|Saint-Blaise|Auvernier|Marin|Epagnier|Cornaux|Cressier|"
-    "Valangin|Boudevilliers|Cernier|Fontainemelon|Les Hauts-Geneveys|"
-    "Fully|Chamoson|Riddes|Saxon|Saillon|Leytron|Charrat|Bovernier|Isérables|"
-    "Nendaz|Verbier|Bagnes|Levron|Vollèges"
+# Die amtliche Liste der Schweizer PLZ und Ortschaften (swisstopo + GeoNames,
+# siehe core/plz.py) entscheidet, was eine Postleitzahl ist.
+#
+# Eine Jahreszahl liegt immer zwischen dem aktuellen Jahr und dem aktuellen
+# Jahr minus 70 (2026 also 1956-2026); ausserhalb gibt es keine Jahreszahlen,
+# dort ist eine vierstellige Zahl eine Postleitzahl. In diesem Jahresband
+# muss zusaetzlich der Ort zur PLZ passen: "2000 Neuchatel" ist eine Adresse,
+# "2026 Muster AG" nicht.
+_JAHRE_ZURUECK = 70
+
+
+def ist_jahreszahl(zahl: str) -> bool:
+    """Liegt diese vierstellige Zahl im Jahresband (heute minus 70 bis heute)?"""
+    if not (len(zahl) == 4 and zahl.isdigit()):
+        return False
+    jahr = int(zahl)
+    heute = date.today().year
+    return heute - _JAHRE_ZURUECK <= jahr <= heute
+
+
+# Firmenname in der Zeile nach einer Jahreszahl ("2026" / "Muster AG").
+_COMPANY_WORD = r"[A-Z\u00c4\u00d6\u00dc][\w\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df&\-'.]*"
+_COMPANY_NAME = rf"{_COMPANY_WORD}(?:[ \t]+(?:{_COMPANY_WORD}|&)){{0,4}}"
+# Ueberschriften und Angaben, die nach einer Jahreszahl stehen, aber keine
+# Firma sind ("2026" / "Berufserfahrung").
+_COMPANY_STOP = frozenset(
+    {
+        "berufserfahrung",
+        "berufliche erfahrung",
+        "ausbildung",
+        "berufsbildung",
+        "berufsmatura",
+        "berufsmaturität",
+        "berufsmaturitaet",
+        "matura",
+        "abitur",
+        "studium",
+        "studien",
+        "praktikum",
+        "lehre",
+        "weiterbildung",
+        "weiterbildungen",
+        "umschulung",
+        "schule",
+        "gymnasium",
+        "kantonsschule",
+        "universität",
+        "universitaet",
+        "hochschule",
+        "fachhochschule",
+        "zertifikat",
+        "zertifikate",
+        "diplom",
+        "bachelor",
+        "master",
+        "kenntnisse",
+        "sprachen",
+        "hobbys",
+        "hobbies",
+        "interessen",
+        "profil",
+        "referenzen",
+        "kontakt",
+        "adresse",
+        "persönliche daten",
+        "persoenliche daten",
+        "persönliche angaben",
+        "persoenliche angaben",
+        "anlagen",
+        "zeugnisse",
+        "bewerbung",
+        "lebenslauf",
+        "anstellung",
+        "teilzeit",
+        "vollzeit",
+        "heute",
+        "seit",
+        "bis",
+    }
 )
+
+
+def _firma_gueltig(text: str) -> bool:
+    """Ist die Zeile unter der Zahl ein Firmenname?"""
+    kopf, _, rest = text.partition("\n")
+    name = rest.strip()
+    if not name:
+        return False
+    klein = name.lower().strip(" .,;:")
+    if klein in _COMPANY_STOP:
+        return False
+    # "2024" / "Dachdecker" ist ein Beruf, keine Firma.
+    if berufs_liste.ist_beruf(name):
+        return False
+    # "8045" / "Zürich" oder "1950" / "Sion" ist eine Adresse: dort passt
+    # der Ort zur PLZ, das uebernimmt die PLZ-Regel.
+    paar = plz_liste.plz_vor_ort(kopf)
+    if (
+        paar is not None
+        and plz_liste.is_postal_code(paar[0])
+        and plz_liste.is_place(paar[0], name)
+    ):
+        return False
+    return True
+
+
+def _plz_zeilenumbruch(text: str) -> bool:
+    """PLZ und Ort stehen in zwei Zeilen.
+
+    Das gilt nur, wenn der Ort wirklich zu dieser PLZ gehoert: "9435" /
+    "Heerbrugg" ist eine Adresse. Eine Jahreszahl ist auf zwei Zeilen nie
+    Postleitzahl - "2026" / "Muster AG" ist ein Jahr mit Firmennamen.
+    """
+    paar = plz_liste.plz_vor_ort(text)
+    if paar is None:
+        return False
+    plz, ort = paar
+    if not plz_liste.is_postal_code(plz):
+        return False
+    if ist_jahreszahl(plz):
+        # Zwei Zeilen: eine Jahreszahl ist nie Postleitzahl.
+        return False
+    if not ort:
+        ort = text[: text.find(plz)].strip(" \t\n")
+    return plz_liste.is_place(plz, ort)
+
+
+def _plz_gueltig(text: str) -> bool:
+    """Steht in diesem Treffer eine amtliche PLZ mit passendem Ort?"""
+    paar = plz_liste.plz_vor_ort(text)
+    if paar is None:
+        return False
+    plz, ort = paar
+    if not plz_liste.is_postal_code(plz):
+        return False
+    if not ist_jahreszahl(plz):
+        return True
+    if not ort:
+        # Ort steht in der Zeile davor ("St. Margrethen\n9430").
+        ort = text[: text.find(plz)].strip(" \t\n")
+    return bool(ort) and plz_liste.is_place(plz, ort)
 
 _DAY = r"(?:0?[1-9]|[12]\d|3[01])"
 _MONTH = r"(?:0?[1-9]|1[0-2])"
@@ -134,7 +276,7 @@ RULES: tuple[Rule, ...] = (
         label="Stra\u00dfe + Hausnummer",
         group="address",
         category=Category.ADDRESS,
-        pattern=rf"(?<!\w){_STREET_WORD}\.?[ \t]*{_HOUSE_NO}(?!\w)",
+        pattern=rf"(?<!\w){_STREET_WORD}\.?[ \t]*{_HOUSE_NO}(?!\w){_HOUSE_END}",
     ),
     Rule(
         key="street_prep",
@@ -143,7 +285,7 @@ RULES: tuple[Rule, ...] = (
         category=Category.ADDRESS,
         pattern=(
             rf"(?<!\w)(?:Am|An|Auf|Beim|Hinter|Im|In|Unter|Vor|Zum|Zur)[ \t]+"
-            rf"(?:dem|der|den)?[ \t]*[A-Z\u00c4\u00d6\u00dc]{_CITY_PART}[ \t]+{_HOUSE_NO}(?!\w)"
+            rf"(?:dem|der|den)?[ \t]*[A-Z\u00c4\u00d6\u00dc]{_CITY_PART}[ \t]+{_HOUSE_NO}(?!\w){_HOUSE_END}"
         ),
     ),
     Rule(
@@ -157,6 +299,7 @@ RULES: tuple[Rule, ...] = (
             rf"{_HOUSE_NO_SHORT}(?![\w\u20ac%'\u2019])"
             # "Police 44-778" ist keine Hausnummer, "12-14" schon.
             rf"(?![ \t]?[-/][ \t]?\d{{3,}})"
+            rf"{_HOUSE_END}"
         ),
     ),
     Rule(
@@ -187,6 +330,7 @@ RULES: tuple[Rule, ...] = (
             rf"(?<!\w)(?i:CH)[ \t]*[-\u2011]?[ \t]*{_CH_PLZ}(?!\d)"
             rf"(?:[ \t]+{_CH_CITY_WORD}){{0,3}}"
         ),
+        validate=_plz_gueltig,
     ),
     Rule(
         key="ch_postal_city",
@@ -195,24 +339,11 @@ RULES: tuple[Rule, ...] = (
         category=Category.POSTAL,
         case_sensitive=True,
         pattern=(
-            rf"{_CH_PLZ_LEAD}{_CH_PLZ_FREI}(?!\d)[ \t]+"
+            rf"{_CH_PLZ_LEAD}{_CH_PLZ}(?!\d)[ \t]+"
             rf"(?!(?i:{_CH_STOPWORDS})\b)"
             rf"{_CH_CITY_WORD}(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
         ),
-    ),
-    Rule(
-        key="ch_postal_city_jahrband",
-        label="Schweizer PLZ + Ort (Jahresband 1900-2099)",
-        group="ch_postal",
-        category=Category.POSTAL,
-        case_sensitive=True,
-        pattern=(
-            rf"{_CH_PLZ_LEAD}{_CH_JAHRBAND}(?!\d)[ \t]+"
-            # Nur ein echter Ort macht aus "2026" eine PLZ - eine Firma,
-            # eine Ausbildung oder eine Rolle dagegen nicht.
-            rf"(?i:{_CH_ORTE_JAHRBAND})\b"
-            rf"(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
-        ),
+        validate=_plz_gueltig,
     ),
     Rule(
         key="ch_postal_break",
@@ -221,10 +352,11 @@ RULES: tuple[Rule, ...] = (
         category=Category.POSTAL,
         case_sensitive=True,
         pattern=(
-            rf"{_CH_PLZ_LEAD}{_CH_PLZ_FREI}(?!\d)[ \t]*\n[ \t]*"
+            rf"{_CH_PLZ_LEAD}{_CH_PLZ}(?!\d)[ \t]*\n[ \t]*"
             rf"(?!(?i:{_CH_STOPWORDS})\b)"
             rf"{_CH_CITY_WORD}(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
         ),
+        validate=_plz_zeilenumbruch,
     ),
     Rule(
         key="ch_postal_before",
@@ -234,8 +366,26 @@ RULES: tuple[Rule, ...] = (
         case_sensitive=True,
         pattern=(
             rf"(?:^|\n)[ \t]*(?!(?i:{_CH_STOPWORDS})\b){_CH_CITY_WORD}"
-            rf"(?:[ \t]+{_CH_CITY_WORD}){{0,2}}[ \t]*\n[ \t]*{_CH_PLZ_FREI}(?!\d)"
+            rf"(?:[ \t]+{_CH_CITY_WORD}){{0,2}}[ \t]*\n[ \t]*{_CH_PLZ}(?!\d)"
         ),
+        validate=_plz_zeilenumbruch,
+    ),
+    Rule(
+        key="company_after_number",
+        label="Firmenname unter einer Zahl",
+        group="address",
+        category=Category.COMPANY,
+        case_sensitive=True,
+        group_index=1,
+        pattern=(
+            # PLZ und Ort stehen immer in einer Zeile. Steht die Zahl allein
+            # und darunter ein Name, ist die Zahl ein Jahr (im Jahresband)
+            # oder eine PLZ, der Name aber eine Firma:
+            # "2026" / "Muster AG" und "9435" / "Muster AG".
+            rf"{_CH_PLZ_LEAD}{_CH_PLZ}(?!\d)[ \t]*\n[ \t]*"
+            rf"({_COMPANY_NAME})"
+        ),
+        validate=_firma_gueltig,
     ),
     Rule(
         key="id_number",

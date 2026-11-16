@@ -104,6 +104,106 @@ def test_abbruch_mitten_im_einblenden(window):
     assert _effect(window) is None
 
 
+def _scan_pdf(path) -> None:
+    """PDF ohne Text: Seite mit Text rendern und als Bild einsetzen."""
+    import pymupdf
+
+    quelle = pymupdf.open()
+    page = quelle.new_page(width=595, height=842)
+    page.insert_text((72, 160), "Dachdecker", fontsize=24, fontname="helv")
+    bild = page.get_pixmap(dpi=300).tobytes("png")
+    quelle.close()
+
+    scan = pymupdf.open()
+    seite = scan.new_page(width=595, height=842)
+    seite.insert_image(seite.rect, stream=bild)
+    scan.save(str(path))
+    scan.close()
+
+
+def test_scan_wechselt_automatisch_zu_pdfocr(window, qt_app, tmp_path, monkeypatch):
+    """PDF ohne Text: PDFocr oeffnet sich und liest den Scan aus."""
+    import pymupdf
+
+    from pdfblack.core.ocr import Word
+    from pdfblack.ui import ocr_view
+
+    class FakeEngine:
+        name = "Test"
+
+        def available(self) -> bool:
+            return True
+
+        def read_words(self, png, size):
+            return [Word("Dachdecker", (300.0, 600.0, 540.0, 650.0))]
+
+    monkeypatch.setattr(ocr_view, "make_engine", lambda language: FakeEngine())
+
+    scan = tmp_path / "scan.pdf"
+    _scan_pdf(scan)
+    window.load_pdf(str(scan))
+
+    assert _wait_until(lambda: window.workspace.currentWidget() is window.ocr_view)
+    assert window._program == "pdfocr"
+    # Die Seite ist bedienbar: Knopf zum Auslesen ist da und sichtbar.
+    assert window.ocr_view.btn_read.isVisible()
+    assert window.ocr_view.btn_read.text() == "Text erkennen"
+    assert _wait_until(lambda: window.ocr_view._result_path is not None), "OCR lief nicht"
+
+    doc = pymupdf.open(window.ocr_view._result_path)
+    assert "Dachdecker" in doc[0].get_text()
+    doc.close()
+
+    # Eine Datei mit Text bleibt in PDFblack.
+    text_pdf = tmp_path / "text.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Ein normaler Brief mit Text.", fontsize=12)
+    doc.save(str(text_pdf))
+    doc.close()
+    window.load_pdf(str(text_pdf))
+    qt_app.processEvents()
+    assert window._program == "pdfblack"
+
+
+def test_drittes_programm_pdfocr(window):
+    """PDFocr: gruener Button, eigene leere Seite, Text nur beim aktiven Programm."""
+    header = window.header
+    _click(header.ocr.logo)
+    assert _wait_until(lambda: window.workspace.currentWidget() is window.ocr_view)
+    QtTest.QTest.qWait(600)
+
+    assert window._program == "pdfocr"
+    # Blau faehrt nach links, gruen steht dort, wo der blaue Text beginnt.
+    assert header.compare.x() == header.title_x()
+    assert header.ocr.x() == header.title_x() + header.LOGO_SIZE + header.GAP
+    # Nur PDFocr zeigt Text.
+    assert header.ocr.text_opacity > 0.99
+    assert header.compare.text_opacity < 0.01
+    assert header.black.text_opacity < 0.01
+
+    # Zurueck zu PDFblack: alle Texte wieder wie am Anfang.
+    _click(header.black.logo)
+    QtTest.QTest.qWait(600)
+    assert window.workspace.currentWidget() is window.black_view
+    assert header.black.text_opacity > 0.99
+    assert header.compare.text_opacity < 0.01
+    assert header.ocr.text_opacity < 0.01
+    assert header.compare.x() == header.compare_rest_x()
+    assert header.ocr.x() == header.ocr_rest_x()
+
+
+def test_drei_buttons_stehen_nebeneinander(window):
+    """In Ruhestellung steht der gruene Button rechts neben dem blauen."""
+    header = window.header
+    QtTest.QTest.qWait(100)
+    assert header.black.x() == header.MARGIN
+    assert header.ocr.x() > header.compare.x()
+    assert header.ocr.x() + header.LOGO_SIZE <= header.width()
+    assert header.ocr.title.text() == "PDFocr"
+    assert header.ocr.subtitle.text().startswith("Liest aus Bildscans")
+
+
 def test_schnelles_hin_und_her_landet_in_der_letzten_wahl(window):
     """Mehrere Klicks waehrend der Animationen: die letzte Wahl gilt."""
     for logo in (

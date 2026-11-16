@@ -11,10 +11,13 @@ from __future__ import annotations
 import logging
 import os
 import re
+import tempfile
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
+from . import berufe
 from .extract import TextMap, open_document
 from .models import Category, Finding
 from .rules import Rule, compiled as compiled_rule, rules_for_groups
@@ -209,7 +212,54 @@ _ENGINE_ERROR: str | None = None
 _ENGINE_TRIED = False
 
 
+def _cache_ordner() -> list[Path]:
+    """Moegliche Ablageorte fuer den tldextract-Cache, bester zuerst."""
+    ordner: list[Path] = []
+    lokal = os.environ.get("LOCALAPPDATA")
+    if lokal:
+        ordner.append(Path(lokal) / "PDFblack" / "tldextract")
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg:
+        ordner.append(Path(xdg) / "pdfblack" / "tldextract")
+    zuhause = os.environ.get("HOME")
+    if zuhause:
+        ordner.append(Path(zuhause) / ".cache" / "pdfblack" / "tldextract")
+    ordner.append(Path(tempfile.gettempdir()) / "pdfblack-tldextract")
+    return ordner
+
+
+def prepare_tldextract() -> str:
+    """Beschreibbaren Cache fuer tldextract setzen.
+
+    Presidio prueft E-Mail-Adressen mit tldextract, und die Bibliothek legt
+    ihre Suffix-Liste standardmaessig im eigenen Paketordner ab. In
+    ``C:\\Program Files\\PDFblack`` ist das schreibgeschuetzt - dort kam
+    ``[WinError 5] Zugriff verweigert`` und die KI-Analyse brach auf jeder
+    Seite ab. Deshalb wird ``TLDEXTRACT_CACHE`` vor dem ersten Presidio-Import
+    auf einen Ordner im Benutzerprofil gelegt; tldextract liest die Variable
+    beim Anlegen des Cache-Objekts.
+    """
+    vorhanden = os.environ.get("TLDEXTRACT_CACHE")
+    if vorhanden:
+        return vorhanden
+    for kandidat in _cache_ordner():
+        try:
+            kandidat.mkdir(parents=True, exist_ok=True)
+            probe = kandidat / ".schreibprobe"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+        except OSError:
+            continue
+        os.environ["TLDEXTRACT_CACHE"] = str(kandidat)
+        return str(kandidat)
+    LOGGER.warning("Kein beschreibbarer Ordner fuer den tldextract-Cache gefunden.")
+    return ""
+
+
 def _build_analyzer():
+    # Muss vor dem Import von Presidio laufen (tldextract liest die Variable
+    # beim Anlegen seines Cache-Objekts).
+    prepare_tldextract()
     from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
     from presidio_analyzer.nlp_engine import NlpEngineProvider
 
@@ -379,6 +429,10 @@ def name_tokens(text: str) -> set[str]:
             continue
         if looks_like_street(token) or not any(char.isalpha() for char in token):
             continue
+        # "Dachdecker" ist ein Beruf, kein Nachname - sonst wuerde das Wort
+        # im ganzen Dokument geschwaerzt.
+        if berufe.ist_berufswort(lowered):
+            continue
         tokens.add(token)
     return tokens
 
@@ -502,6 +556,8 @@ def run_detection(
                         start, end = match.span()
                     if end <= start:
                         continue
+                    if rule.validate is not None and not rule.validate(match.group(0)):
+                        continue
                     candidates.append(
                         _Candidate(
                             page=index,
@@ -600,6 +656,14 @@ def run_detection(
 
         findings: list[Finding] = []
         uid = 0
+        # Berufsbezeichnungen sind keine Namen und keine Adressen
+        # ("Vorarbeiterin von 10 Dachdecker"). Manuell eingegebene Werte
+        # bleiben unangetastet - was der Nutzer eintraegt, wird geschwaerzt.
+        candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.entity == "MANUAL" or not berufe.ist_beruf(candidate.text)
+        ]
         for candidate in _resolve(candidates):
             page_text = textmap.page(candidate.page)
             start, end = _strip_span(page_text.text, candidate.start, candidate.end)

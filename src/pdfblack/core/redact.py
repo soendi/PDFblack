@@ -57,6 +57,19 @@ def _clear_widgets(page: pymupdf.Page, boxes: list[pymupdf.Rect]) -> None:
             pass
 
 
+def _has_invisible_text(page: pymupdf.Page) -> bool:
+    """Enthaelt die Seite unsichtbaren Text (Render-Modus 3, z. B. von PDFocr)?"""
+    try:
+        if not page.get_images():
+            return False
+        for span in page.get_texttrace():
+            if span.get("type") == 3:
+                return True
+    except Exception:  # noqa: BLE001 - lieber wie bisher weiterarbeiten
+        return False
+    return False
+
+
 def apply_redactions(
     src: str,
     dst: str,
@@ -95,8 +108,17 @@ def apply_redactions(
             if boxes:
                 _drop_links_inside(page, boxes)
                 _clear_widgets(page, boxes)
+                # Bei einem eingelesenen Bildscan (unsichtbarer Textlayer von
+                # PDFocr) steht der sichtbare Text im Bild. Dann muessen auch
+                # die Bildpunkte im Schwärzungsbereich verschwinden, sonst
+                # bleibt der Name im Scan lesbar.
+                scanned = _has_invisible_text(page)
                 page.apply_redactions(
-                    images=pymupdf.PDF_REDACT_IMAGE_NONE,
+                    images=(
+                        pymupdf.PDF_REDACT_IMAGE_PIXELS
+                        if scanned
+                        else pymupdf.PDF_REDACT_IMAGE_NONE
+                    ),
                     graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
                     text=pymupdf.PDF_REDACT_TEXT_REMOVE,
                 )

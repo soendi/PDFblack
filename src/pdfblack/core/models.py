@@ -13,6 +13,7 @@ class Category(str, Enum):
 
     PERSON = "Person"
     ADDRESS = "Adresse"
+    COMPANY = "Firma"
     POSTAL = "PLZ / Ort"
     ID = "Nummer / ID"
     CONTACT = "Kontakt"
@@ -30,6 +31,7 @@ class Category(str, Enum):
 _COLORS: dict[Category, str] = {
     Category.PERSON: "#ff5d5d",
     Category.ADDRESS: "#ff9f45",
+    Category.COMPANY: "#f7a8b8",
     Category.POSTAL: "#ffd43b",
     Category.ID: "#4dabf7",
     Category.CONTACT: "#a78bfa",

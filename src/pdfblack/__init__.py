@@ -3,5 +3,5 @@
 __all__ = ["APP_NAME", "APP_TAGLINE", "APP_VERSION"]
 
 APP_NAME = "PDFblack"
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.3.0"
 APP_TAGLINE = "Vertrauliche Daten in PDF-Dateien automatisch schwaerzen"

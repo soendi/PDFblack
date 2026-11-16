@@ -31,6 +31,7 @@ for package in (
     "de_core_news_md",
     "phonenumbers",
     "tldextract",
+    "spellchecker",
 ):
     try:
         pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
@@ -39,6 +40,13 @@ for package in (
     datas += pkg_datas
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
+
+# Amtliche PLZ-/Ortschaftsliste und Berufsbezeichnungen
+# (tools/build_plz_data.py, tools/build_berufe_data.py).
+datas += [
+    (str(SRC / "pdfblack" / "data" / "plz_ch.json"), "pdfblack/data"),
+    (str(SRC / "pdfblack" / "data" / "berufe.json"), "pdfblack/data"),
+]
 
 hiddenimports += collect_submodules("presidio_analyzer.predefined_recognizers")
 hiddenimports += ["spacy.lang.de", "spacy.lang.en", "yaml"]

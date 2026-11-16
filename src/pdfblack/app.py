@@ -110,6 +110,12 @@ def main(argv: list[str] | None = None) -> int:
 
     os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
 
+    # tldextract (in Presidio) wuerde seine Suffix-Liste nach "Program Files"
+    # schreiben - dort ist sie schreibgeschuetzt. Deshalb frueh umlenken.
+    from .core.detect import prepare_tldextract
+
+    prepare_tldextract()
+
     from PySide6.QtWidgets import QApplication
 
     from .ui.branding import app_icon

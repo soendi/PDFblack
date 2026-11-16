@@ -1,4 +1,4 @@
-# PDFblack 1.2.2
+# PDFblack 1.3.0
 
 Vertrauliche Daten in PDF-Dateien automatisch schwärzen – mit Vorschau, Prüfung
 und echter Entfernung des Textes.
@@ -24,8 +24,10 @@ und echter Entfernung des Textes.
 | --- | --- |
 | KI (Microsoft Presidio + spaCy, deutsches Modell) | Personen, Vornamen, Orte, Datumsangaben |
 | Muster (deutsche Regeln) | Straße + Hausnummer, PLZ + Ort, Personalnummer, Ausweis-, Versicherten-, Kunden-, Vertrags-, Aktenzeichen u. a. |
-| Muster (Schweizer Regeln) | vierstellige PLZ: `CH-8045`, `CH 3000`, `8045 Zürich`, `CH-1814 La Tour-de-Peilz` |
+| Muster (Schweizer Regeln) | vierstellige PLZ samt Ort, geprüft gegen die amtliche Liste aller Schweizer PLZ: `CH-8045`, `CH 3000`, `8045 Zürich`, `CH-1814 La Tour-de-Peilz` |
 | Kontakt/Bank | E-Mail, Telefon (auch `+41 …`), IBAN |
+| Berufe | rund 11 500 Berufsbezeichnungen in männlicher und weiblicher Form – sie werden nicht geschwärzt („Dachdecker“, „Vorarbeiterin“) |
+| Firmen | Name unter einer allein stehenden Jahreszahl (`2026` / `Muster AG`) – Kategorie „Firma“ |
 | Zweiter Durchlauf | alle Werte aus den Eingabefeldern (Vorname, Nachname, Adresse, PLZ, Ort, Personennummer, weitere Begriffe) |
 | Eigene Regexe | beliebige reguläre Ausdrücke, ein Ausdruck pro Zeile |
 
@@ -34,14 +36,111 @@ geleert und entfernt – der Wert bleibt also nicht als Feld im PDF zurück,
 obwohl die Fläche geschwärzt aussieht.
 
 Schweizer Postleitzahlen sind nur vierstellig. Damit nicht jede vierstellige
-Zahl (Jahr, Betrag, Stückzahl) geschwärzt wird, verlangt die Erkennung entweder
-den Präfix `CH`/`CH-` oder einen Ortsnamen dahinter, der kein Betrag und keine
-Mengenangabe ist („1500 Franken“ bleibt also stehen). Der Ort darf auch in der
-nächsten Zeile stehen (`9435` / `Heerbrugg`) und kleingeschrieben sein;
-Füllwörter wie „und“, „bis“ oder „Personen“ machen eine Zahl nicht zur PLZ. Abschalten lässt sich das
-über „Automatische Erkennung → Schweizer PLZ“.
+Zahl (Jahr, Betrag, Stückzahl) geschwärzt wird, prüft PDFblack jede Zahl gegen
+die **amtliche Liste aller Schweizer Postleitzahlen und Ortschaften** – rund
+3 400 PLZ mit ihren Ortschaften, inklusive Fürstentum Liechtenstein, mit Stand
+in `src/pdfblack/data/plz_ch.json`. Was es als PLZ nicht gibt, bleibt stehen:
+„1500 Franken“, „4711“ oder eine Jahreszahl wie „2026“.
+
+Eine **Jahreszahl** liegt immer zwischen dem aktuellen Jahr und dem aktuellen
+Jahr minus 70 (2026 also 1956–2026); ausserhalb dieses Bandes gibt es keine
+Jahreszahlen, dort ist eine vierstellige Zahl eine Postleitzahl. Im Band muss
+zusätzlich der Ort zur PLZ passen – „2000 Neuchâtel“ ist eine Adresse,
+„2026 Muster AG“ nicht. Ausserhalb des Bandes bleibt die Zahl eine PLZ, deshalb
+sind „1950 Sion“ und „1950 Sitten“ Adressen.
+Neben `CH`/`CH-` vor der Zahl genügt ein Ortsname dahinter, der kein Betrag
+und keine Mengenangabe ist; Füllwörter wie „und“, „bis“ oder „Personen“
+machen eine Zahl nicht zur PLZ. Die Liste wird monatlich von swisstopo
+nachgeführt und mit `python tools/build_plz_data.py` neu erzeugt. Abschalten
+lässt sich das über „Automatische Erkennung → Schweizer PLZ“.
+
+**PLZ und Ort stehen in einer Zeile.** Steht eine vierstellige Zahl allein und
+der Name erst in der Zeile darunter (`2026` / `Muster AG`, `9435` /
+`Muster AG`), gilt der Name als **Firmenname** – er erscheint in der
+Trefferliste als „Firma“ und wird geschwärzt. Überschriften und Berufe darunter
+(„Berufserfahrung“, „Dachdecker“) bleiben stehen. Zwei Zeilen gelten nur dann
+als Adresse, wenn der Ort wirklich zu dieser PLZ gehört (`9435` /
+`Heerbrugg`, so wie in getrennten Formularfeldern) – `9435` / `Muster AG`
+nicht.
 
 ![Schweizer Adresse mit vierstelliger PLZ](docs/vorschau-schweiz.png)
+
+## PDFocr: Bildscans auslesen
+
+Wird in PDFblack eine Datei geöffnet, die **keinen Text** enthält (ein reiner
+Bildscan), wechselt das Programm automatisch zu **PDFocr** und liest den Scan
+aus. Dort lässt sich jede PDF-Datei auch von Hand öffnen; die Erkennung läuft
+im Hintergrund und zeigt den Text gleich darunter an.
+
+### Der unsichtbare Textlayer
+
+Der erkannte Text wird **unsichtbar hinter das Bild** gelegt (Render-Modus 3,
+unter dem Seiteninhalt) und zwar genau in das Rechteck, in dem das Wort im Bild
+steht: Die Seite wird mit 300 dpi gerendert, Tesseracts Wortkästen werden mit
+demselben Faktor in PDF-Punkte zurückgerechnet, und jedes Wort wird waagerecht
+auf seine Kastenbreite gestaucht. Dadurch sitzt der Text deckungsgleich über
+dem Scan – eine spätere Schwärzung trifft dieselbe Stelle im Bild und ersetzt
+auch die Bildpunkte im Schwärzungsbereich.
+
+### Wörterbuch-Korrektur
+
+Vor dem Einsetzen prüft PDFocr die erkannten Wörter gegen ein deutsches
+Wörterbuch (rund 339 000 Wörter, Bibliothek `pyspellchecker`, MIT-Lizenz) und
+ersetzt offensichtliche Lesefehler – „bewerbng“ wird „bewerbung“,
+„dachdeker“ wird „dachdecker“. Damit die Schwärzung nicht darunter leidet, ist
+die Korrektur bewusst vorsichtig:
+
+- nur **klein geschriebene** Einzelwörter – Namen, Straßen und Firmen sind im
+  Deutschen groß geschrieben und bleiben unverändert,
+- nur Wörter, die im Dokument **einmal** vorkommen (ein wiederholtes Wort ist
+  eher ein Eigenname als ein Tippfehler),
+- nur wenn es **genau einen** nahen Vorschlag gibt und das Wort lang genug ist
+  (ab fünf Buchstaben, keine Ziffern, keine Bindestriche).
+
+Abschalten lässt sich das über das Häkchen „Rechtschreibung prüfen
+(Wörterbuch)“ auf der Seite.
+
+### Ablauf
+
+1. Datei öffnen – bei einem reinen Bildscan passiert das automatisch, sonst
+   über „PDF öffnen …“ oder per Ziehen ins Fenster.
+2. Sprache wählen (Deutsch, Englisch, Französisch, Italienisch,
+   Deutsch+Englisch) und „Text erkennen“ drücken.
+3. Der erkannte Text erscheint darunter; „Textlayer speichern unter …“ schreibt
+   die neue PDF-Datei.
+4. „In PDFblack öffnen“ lädt sie zum Prüfen und Schwärzen.
+
+Seiten, die bereits Text enthalten, bleiben unverändert und werden nicht
+neu erkannt.
+
+### Alles lokal
+
+Rendern (PyMuPDF), Erkennung (Tesseract als lokales Programm) und
+Wörterbuch-Korrektur laufen ausschließlich auf dem Rechner – es werden keine
+Bild- oder Textdaten übertragen, und die Funktion arbeitet auch offline. Die
+neue Datei liegt bis zum Speichern in einem temporären Ordner.
+
+### Voraussetzung
+
+[Tesseract-OCR](https://github.com/tesseract-ocr/tesseract) muss installiert
+sein (Windows: `tesseract-ocr`, üblicher Pfad `C:\Program Files\Tesseract-OCR`,
+wird automatisch gefunden). Wird es nicht gefunden, sagt PDFocr das und nennt
+den Weg über die Umgebungsvariable `PDFBLACK_TESSERACT`. Das Wörterbuch ist
+teil des Programms.
+
+**Berufsbezeichnungen** stehen in einer eigenen Liste
+(`src/pdfblack/data/berufe.json`, rund 11 500 Einträge in männlicher und
+weiblicher Form, Quelle Wikidata (CC0) plus gängige Berufe). Sie gelten weder
+als Name noch als Adresse: „Vorarbeiterin von 10 Dachdecker“ ergibt keinen
+Treffer, und eine erkannte Person wird nur über ihre Namensbestandteile im
+Dokument gesucht, nicht über den Beruf. Nachnamen, die zugleich Berufe sind
+(„Herr Müller“, „Frau Koch“), zählen weiter als Namen. Neu bauen:
+`python tools/build_berufe_data.py`.
+
+Bei Adressen muss die Hausnummer das Wort beenden: Folgt nach der Nummer noch
+ein ganzes Wort („Vorarbeiterin von 10 Dachdecker“, „Hauptstraße 12 Telefon“),
+ist es keine Adresse. Verbindungen wie „in 8000 Zürich“ sind erlaubt, damit
+Adressen mitten im Satz gefunden werden.
 
 Der zweite Durchlauf greift genau dann, wenn die KI etwas nicht erkannt hat:
 Werte in die Felder eintragen, „Erkennung erneuern“ drücken, fertig.
@@ -145,7 +244,7 @@ Alle Varianten setzen eine virtuelle Umgebung mit den Abhängigkeiten voraus.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-# Ergebnis: dist\PDFblack-1.2.2-Setup.exe  (benötigt Inno Setup 6)
+# Ergebnis: dist\PDFblack-1.3.0-Setup.exe  (benötigt Inno Setup 6)
 ```
 
 **macOS (.app + ZIP)**
@@ -191,3 +290,10 @@ Eigener Code: MIT. Verwendete Bibliotheken:
   eine kommerzielle Weitergabe ohne Quelloffenlegung ist eine PyMuPDF-Lizenz
   erforderlich.
 - **PySide6 / Qt** – LGPL-3.0.
+- **Berufsbezeichnungen** (`src/pdfblack/data/berufe.json`) – Wikidata, CC0
+  (gemeinfrei); ergänzt um eine eigene Liste gängiger Berufe.
+- **PLZ- und Ortschaftsliste** (`src/pdfblack/data/plz_ch.json`) – amtliches
+  Ortschaftenverzeichnis mit Postleitzahl von swisstopo/swisstopo.admin.ch
+  (opendata.swiss, freie Nutzung, Quellenangabe erforderlich) sowie
+  Postleitzahldaten von GeoNames (CC BY 4.0). Neu bauen:
+  `python tools/build_plz_data.py`.

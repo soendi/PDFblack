@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, APP_TAGLINE, APP_VERSION
+from ..core import ocr as ocr_core
 from ..core.detect import DetectionOptions, run_detection
 from ..core.extract import open_document
 from ..core.models import Category, Finding, PdfPasswordError
@@ -57,14 +58,17 @@ from ..core.updater import (
     install,
     is_newer,
 )
-from .branding import compare_logo_pixmap, logo_pixmap
+from .branding import compare_logo_pixmap, logo_pixmap, ocr_logo_pixmap
 from .compare import CompareView
+from .ocr_view import OcrView
 from .preferences import PreferencesDialog
 from .canvas import PdfCanvas
 from .panels import ControlsPanel, DropZone, FindingsPanel
 
 COMPARE_NAME = "PDFcompare"
 COMPARE_TAGLINE = "Vergleicht PDFs miteinander und gibt eine Zusammenfassung aus"
+OCR_NAME = "PDFocr"
+OCR_TAGLINE = "Liest aus Bildscans den Text aus PDF Dateien."
 
 
 PRIVACY_HTML = """
@@ -273,11 +277,15 @@ class _BrandBlock(QWidget):
 
 
 class AppHeader(QWidget):
-    """Kopfzeile mit zwei Programmen.
+    """Kopfzeile mit drei Programmen.
 
-    Das zweite Programm steht zunaechst ab der Fenstermitte und faehrt beim
-    Umschalten nach links, bis sein Logo genau dort liegt, wo Titel und
-    Untertitel des ersten Programms beginnen.
+    PDFblack steht links, PDFcompare ab der Fenstermitte, PDFocr rechts neben
+    seinem Logo. Wird ein Programm gewaehlt, faehrt der blaue Block nach links,
+    bis sein Logo dort liegt, wo Titel und Untertitel von PDFblack beginnen.
+    PDFocr bleibt dabei genau rechts neben diesem Logo stehen - also dort, wo
+    der Text des blauen Buttons anfaengt.
+
+    Sichtbar ist immer nur der Text des aktiven Programms.
     """
 
     programSelected = Signal(str)
@@ -287,6 +295,8 @@ class AppHeader(QWidget):
     GAP = 11
     SLIDE_MS = 320
     TEXT_MS = 220
+    # Abstand zwischen blauem und gruenem Button in Ruhestellung.
+    LOGO_GAP = 28
 
     def __init__(self) -> None:
         super().__init__()
@@ -303,46 +313,61 @@ class AppHeader(QWidget):
             object_name="BrandOverlay",
         )
         self.compare.setParent(self)
+        self.ocr = _BrandBlock(
+            ocr_logo_pixmap(self.LOGO_SIZE),
+            OCR_NAME,
+            OCR_TAGLINE,
+            object_name="BrandOverlay",
+        )
+        self.ocr.setParent(self)
 
         self.version = QLabel(f"v{APP_VERSION}")
         self.version.setObjectName("VersionChip")
         self.version.setParent(self)
 
-        # Eine Animation fuer alle Wege - wiederverwendet, damit kein Objekt
-        # waehrend eines laufenden Wechsels geloescht wird.
-        self._slide = QPropertyAnimation(self.compare, b"pos", self)
-        self._slide.setDuration(self.SLIDE_MS)
-        self._slide.setEasingCurve(QEasingCurve.OutCubic)
+        self._blocks: dict[str, _BrandBlock] = {
+            "pdfblack": self.black,
+            "pdfcompare": self.compare,
+            "pdfocr": self.ocr,
+        }
 
-        # Beim Start steht PDFcompare rechts und zeigt keinen Text.
-        self.compare.set_text_opacity(0.0)
-        self._compare_fade = QVariantAnimation(self)
-        self._black_fade = QVariantAnimation(self)
-        for animation in (self._compare_fade, self._black_fade):
+        # Eine Animation je Block - wiederverwendet, damit kein Objekt waehrend
+        # eines laufenden Wechsels geloescht wird.
+        self._slides: dict[str, QPropertyAnimation] = {}
+        for name, block in self._blocks.items():
+            if name == "pdfblack":
+                continue
+            animation = QPropertyAnimation(block, b"pos", self)
+            animation.setDuration(self.SLIDE_MS)
+            animation.setEasingCurve(QEasingCurve.OutCubic)
+            self._slides[name] = animation
+
+        # Beim Start steht PDFblack links und allein mit Text.
+        self._targets: dict[str, float] = {
+            "pdfblack": 1.0,
+            "pdfcompare": 0.0,
+            "pdfocr": 0.0,
+        }
+        self._fades: dict[str, QVariantAnimation] = {}
+        for name, block in self._blocks.items():
+            block.set_text_opacity(self._targets[name])
+            animation = QVariantAnimation(self)
             animation.setDuration(self.TEXT_MS)
             animation.setEasingCurve(QEasingCurve.InOutQuad)
-        self._compare_target = 0.0
-        self._black_target = 1.0
-        self._compare_fade.valueChanged.connect(
-            lambda value: self.compare.set_text_opacity(float(value))
-        )
-        self._black_fade.valueChanged.connect(
-            lambda value: self.black.set_text_opacity(float(value))
-        )
-        # Der letzte Animationsschritt trifft das Ziel nicht exakt.
-        self._compare_fade.finished.connect(
-            lambda: self.compare.set_text_opacity(self._compare_target)
-        )
-        self._black_fade.finished.connect(
-            lambda: self.black.set_text_opacity(self._black_target)
-        )
+            animation.valueChanged.connect(
+                lambda value, target=block: target.set_text_opacity(float(value))
+            )
+            # Der letzte Animationsschritt trifft das Ziel nicht exakt.
+            animation.finished.connect(
+                lambda key=name: self._blocks[key].set_text_opacity(self._targets[key])
+            )
+            self._fades[name] = animation
 
-        self.black.logo.setToolTip(f"{APP_NAME} anzeigen")
-        self.compare.logo.setToolTip(f"{COMPARE_NAME} anzeigen")
-        self.black.logo.clicked.connect(lambda: self.programSelected.emit("pdfblack"))
-        self.compare.logo.clicked.connect(
-            lambda: self.programSelected.emit("pdfcompare")
-        )
+        for name, block in self._blocks.items():
+            block.logo.setToolTip(f"{block.title.text()} anzeigen")
+            block.logo.clicked.connect(
+                lambda key=name: self.programSelected.emit(key)
+            )
 
     # -- Positionen ---------------------------------------------------
 
@@ -367,37 +392,58 @@ class AppHeader(QWidget):
         )
         return max(left_limit, min(half, right_limit))
 
-    def compare_target_x(self, program: str) -> int:
-        if program == "pdfcompare":
-            return self.title_x()
-        return self.compare_rest_x()
-
-    def _place(self, animate: bool, program: str | None = None) -> None:
-        if not hasattr(self, "_slide"):
-            return
-        program = program or self._program
-        self.black.adjustSize()
-        self.compare.adjustSize()
-        height = self.height()
-        self.black.move(self.MARGIN, max(0, (height - self.black.height()) // 2))
-        end = QPoint(
-            self.compare_target_x(program),
-            max(0, (height - self.compare.height()) // 2),
+    def ocr_rest_x(self) -> int:
+        """Ruheposition von PDFocr: rechts neben dem Logo von PDFcompare."""
+        rechts = self.compare_rest_x() + self.LOGO_SIZE + self.GAP + self.LOGO_GAP
+        limit = (
+            self.width()
+            - self.MARGIN
+            - self.version.sizeHint().width()
+            - 12
+            - self.LOGO_SIZE
+        )
+        return max(
+            self.compare_rest_x() + self.LOGO_SIZE + self.GAP,
+            min(rechts, limit),
         )
 
-        if program == "pdfcompare":
-            self.compare.raise_()
-        else:
-            self.black.raise_()
+    def block_x(self, name: str, program: str) -> int:
+        """x-Position des Logos eines Blocks fuer das gewaehlte Programm."""
+        if name == "pdfblack":
+            return self.MARGIN
+        if name == "pdfcompare":
+            # Beim Vergleich und bei der Texterkennung faehrt der blaue Button
+            # an den linken Rand, an den Anfang des PDFblack-Textes.
+            return self.title_x() if program != "pdfblack" else self.compare_rest_x()
+        if program == "pdfocr":
+            # Genau dort, wo der Text des blauen Buttons anfaengt.
+            return self.title_x() + self.LOGO_SIZE + self.GAP
+        return self.ocr_rest_x()
 
-        self._slide.stop()
-        if not animate or self.compare.pos() == end:
-            self.compare.move(end)
+    def _place(self, animate: bool, program: str | None = None) -> None:
+        if not hasattr(self, "_slides"):
             return
+        program = program or self._program
+        height = self.height()
+        for name, block in self._blocks.items():
+            block.adjustSize()
+            end = QPoint(
+                self.block_x(name, program),
+                max(0, (height - block.height()) // 2),
+            )
+            if name == "pdfblack":
+                block.move(end)
+                continue
+            animation = self._slides[name]
+            animation.stop()
+            if not animate or block.pos() == end:
+                block.move(end)
+                continue
+            animation.setStartValue(block.pos())
+            animation.setEndValue(end)
+            animation.start()
 
-        self._slide.setStartValue(self.compare.pos())
-        self._slide.setEndValue(end)
-        self._slide.start()
+        self._blocks[program].raise_()
 
     def set_program(self, program: str, animate: bool = True) -> None:
         self._program = program
@@ -407,26 +453,22 @@ class AppHeader(QWidget):
     def _fade_text(self, program: str, animate: bool = True) -> None:
         """Nur der Text des aktiven Programms ist zu sehen.
 
-        Rechts stehend zeigt PDFcompare keinen Text; beim Wechsel nach links
-        blendet er ein, waehrend der Text von PDFblack ausblendet.
+        Die anderen Programme behalten ihr Logo, ihr Titel und Untertitel
+        blenden aber vollstaendig aus.
         """
-        self._compare_target = 1.0 if program == "pdfcompare" else 0.0
-        self._black_target = 0.0 if program == "pdfcompare" else 1.0
-        if not animate:
-            for animation in (self._compare_fade, self._black_fade):
-                animation.stop()
-            self.compare.set_text_opacity(self._compare_target)
-            self.black.set_text_opacity(self._black_target)
-            return
-        self._animate_text(self._compare_fade, self.compare, self._compare_target)
-        self._animate_text(self._black_fade, self.black, self._black_target)
+        for name in self._targets:
+            self._targets[name] = 1.0 if name == program else 0.0
 
-    @staticmethod
-    def _animate_text(animation, block: "_BrandBlock", target: float) -> None:
-        animation.stop()
-        animation.setStartValue(float(block.text_opacity))
-        animation.setEndValue(float(target))
-        animation.start()
+        for name, block in self._blocks.items():
+            animation = self._fades[name]
+            target = self._targets[name]
+            animation.stop()
+            if not animate:
+                block.set_text_opacity(target)
+                continue
+            animation.setStartValue(float(block.text_opacity))
+            animation.setEndValue(float(target))
+            animation.start()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -566,10 +608,12 @@ class MainWindow(QMainWindow):
         black_layout.addWidget(splitter, 1)
 
         self.compare_view = self._build_compare_view()
+        self.ocr_view = self._build_ocr_view()
 
         self.workspace = QStackedWidget()
         self.workspace.addWidget(self.black_view)
         self.workspace.addWidget(self.compare_view)
+        self.workspace.addWidget(self.ocr_view)
         root.addWidget(self.workspace, 1)
         self.setCentralWidget(central)
 
@@ -593,19 +637,31 @@ class MainWindow(QMainWindow):
         view.message.connect(self._show_compare_message)
         return view
 
+    def _build_ocr_view(self) -> QWidget:
+        """PDFocr: Bildscan auslesen und Textlayer hinter das Bild legen."""
+        view = OcrView()
+        view.message.connect(lambda text: self.statusBar().showMessage(text, 12000))
+        view.openInBlackRequested.connect(self.load_pdf)
+        return view
+
     def _show_compare_message(self, text: str) -> None:
         """Meldung der Übergabe in der Statuszeile anzeigen."""
         self.statusBar().showMessage(text, 12000)
 
     def _show_program(self, program: str) -> None:
-        """Zwischen PDFblack und PDFcompare umschalten."""
+        """Zwischen PDFblack, PDFcompare und PDFocr umschalten."""
         if program == self._program:
             return
         self._program = program
         self.header.set_program(program)
         if program == "pdfcompare":
             self.compare_view.refresh()
-        self._fade_to(self.black_view if program == "pdfblack" else self.compare_view)
+        pages = {
+            "pdfblack": self.black_view,
+            "pdfcompare": self.compare_view,
+            "pdfocr": self.ocr_view,
+        }
+        self._fade_to(pages[program])
 
     def _stop_fade(self) -> None:
         """Laufendes Ein-/Ausblenden abbrechen und volle Deckkraft herstellen.
@@ -811,6 +867,20 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._fit_width)
         self._update_page_label()
         self._refresh_state()
+
+        # Ein Bildscan hat keinen Text zum Schwaerzen. Dann uebernimmt PDFocr:
+        # Text auslesen und unsichtbar hinter das Bild legen, damit die Datei
+        # anschliessend geschwaerzt werden kann.
+        try:
+            ohne_text = not ocr_core.has_text(path, password)
+        except Exception:  # noqa: BLE001 - besser in PDFblack bleiben als abbrechen
+            ohne_text = False
+        if ohne_text:
+            self.ocr_view.open_path(path, password, start=True)
+            self._show_program("pdfocr")
+            self.statusBar().showMessage(
+                "Kein Text zum Schwärzen – PDFocr liest den Scan aus.", 12000
+            )
 
     def _show_error(self, exc: Exception) -> None:
         QMessageBox.critical(
