@@ -7,13 +7,24 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QRect, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import (
+    QEasingCurve,
+    QPoint,
+    QPropertyAnimation,
+    QRect,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QFileDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -45,9 +56,12 @@ from ..core.updater import (
     install,
     is_newer,
 )
-from .branding import logo_pixmap
+from .branding import compare_logo_pixmap, logo_pixmap
 from .canvas import PdfCanvas
 from .panels import ControlsPanel, DropZone, FindingsPanel
+
+COMPARE_NAME = "PDFcompare"
+COMPARE_TAGLINE = "Vergleicht PDFs miteinander und gibt eine Zusammenfassung aus"
 
 
 PRIVACY_HTML = """
@@ -168,6 +182,178 @@ class UpdateDownloadWorker(QThread):
         self.done.emit(str(path))
 
 
+class _LogoButton(QLabel):
+    """Anklickbares Logo im Kopfbereich."""
+
+    clicked = Signal()
+
+    def __init__(self, size: int = 34, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(size, size)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton and self.rect().contains(
+            event.position().toPoint()
+        ):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
+class _BrandBlock(QWidget):
+    """Logo, Titel und Untertitel eines Programms."""
+
+    def __init__(
+        self,
+        pixmap,
+        title_text: str,
+        subtitle_text: str,
+        object_name: str = "",
+    ) -> None:
+        super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        if object_name:
+            self.setObjectName(object_name)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(AppHeader.GAP)
+
+        self.logo = _LogoButton(AppHeader.LOGO_SIZE, self)
+        self.logo.setPixmap(pixmap)
+
+        titles = QVBoxLayout()
+        titles.setSpacing(0)
+        self.title = QLabel(title_text)
+        self.title.setObjectName("AppTitle")
+        self.subtitle = QLabel(subtitle_text)
+        self.subtitle.setObjectName("AppSubtitle")
+        titles.addWidget(self.title)
+        titles.addWidget(self.subtitle)
+
+        layout.addWidget(self.logo, 0, Qt.AlignVCenter)
+        layout.addLayout(titles)
+        self.adjustSize()
+
+
+class AppHeader(QWidget):
+    """Kopfzeile mit zwei Programmen.
+
+    Das zweite Programm steht zunaechst ab der Fenstermitte und faehrt beim
+    Umschalten nach links, bis sein Logo genau dort liegt, wo Titel und
+    Untertitel des ersten Programms beginnen.
+    """
+
+    programSelected = Signal(str)
+
+    MARGIN = 16
+    LOGO_SIZE = 34
+    GAP = 11
+    SLIDE_MS = 320
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("Header")
+        self.setFixedHeight(62)
+        self._program = "pdfblack"
+
+        self.black = _BrandBlock(logo_pixmap(self.LOGO_SIZE), APP_NAME, APP_TAGLINE)
+        self.black.setParent(self)
+        self.compare = _BrandBlock(
+            compare_logo_pixmap(self.LOGO_SIZE),
+            COMPARE_NAME,
+            COMPARE_TAGLINE,
+            object_name="BrandOverlay",
+        )
+        self.compare.setParent(self)
+
+        self.version = QLabel(f"v{APP_VERSION}")
+        self.version.setObjectName("VersionChip")
+        self.version.setParent(self)
+
+        # Eine Animation fuer alle Wege - wiederverwendet, damit kein Objekt
+        # waehrend eines laufenden Wechsels geloescht wird.
+        self._slide = QPropertyAnimation(self.compare, b"pos", self)
+        self._slide.setDuration(self.SLIDE_MS)
+        self._slide.setEasingCurve(QEasingCurve.OutCubic)
+
+        self.black.logo.setToolTip(f"{APP_NAME} anzeigen")
+        self.compare.logo.setToolTip(f"{COMPARE_NAME} anzeigen")
+        self.black.logo.clicked.connect(lambda: self.programSelected.emit("pdfblack"))
+        self.compare.logo.clicked.connect(
+            lambda: self.programSelected.emit("pdfcompare")
+        )
+
+    # -- Positionen ---------------------------------------------------
+
+    def title_x(self) -> int:
+        """x-Position, an der Titel und Untertitel des ersten Programms beginnen."""
+        return self.MARGIN + self.LOGO_SIZE + self.GAP
+
+    def compare_rest_x(self) -> int:
+        """Ruheposition des zweiten Programms: ab der Haelfte des Fensters.
+
+        Reicht der Platz bis zur Versionsnummer nicht, rueckt der Block so
+        weit nach links, dass er sie nicht ueberdeckt.
+        """
+        half = self.width() // 2
+        left_limit = self.MARGIN + self.black.sizeHint().width() + 24
+        right_limit = (
+            self.width()
+            - self.MARGIN
+            - self.version.sizeHint().width()
+            - 12
+            - self.compare.sizeHint().width()
+        )
+        return max(left_limit, min(half, right_limit))
+
+    def compare_target_x(self, program: str) -> int:
+        if program == "pdfcompare":
+            return self.title_x()
+        return self.compare_rest_x()
+
+    def _place(self, animate: bool, program: str | None = None) -> None:
+        if not hasattr(self, "_slide"):
+            return
+        program = program or self._program
+        self.black.adjustSize()
+        self.compare.adjustSize()
+        height = self.height()
+        self.black.move(self.MARGIN, max(0, (height - self.black.height()) // 2))
+        end = QPoint(
+            self.compare_target_x(program),
+            max(0, (height - self.compare.height()) // 2),
+        )
+
+        if program == "pdfcompare":
+            self.compare.raise_()
+        else:
+            self.black.raise_()
+
+        self._slide.stop()
+        if not animate or self.compare.pos() == end:
+            self.compare.move(end)
+            return
+
+        self._slide.setStartValue(self.compare.pos())
+        self._slide.setEndValue(end)
+        self._slide.start()
+
+    def set_program(self, program: str, animate: bool = True) -> None:
+        self._program = program
+        self._place(animate=animate, program=program)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        size = self.version.sizeHint()
+        self.version.resize(size)
+        self.version.move(
+            self.width() - self.MARGIN - size.width(),
+            max(0, (self.height() - size.height()) // 2),
+        )
+        self._place(animate=False)
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -188,6 +374,9 @@ class MainWindow(QMainWindow):
         self._update_progress: QProgressDialog | None = None
         self._update_silent = False
         self._update_version = ""
+        self._program = "pdfblack"
+        self._fades: list[QPropertyAnimation] = []
+        self._fade_serial = 0
 
         self._build_ui()
         self._build_menus()
@@ -207,34 +396,9 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        header = QWidget()
-        header.setObjectName("Header")
-        header.setFixedHeight(62)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 8, 16, 8)
-        header_layout.setSpacing(11)
-
-        logo = QLabel()
-        logo.setPixmap(logo_pixmap(34))
-        logo.setFixedSize(34, 34)
-
-        titles = QVBoxLayout()
-        titles.setSpacing(0)
-        title = QLabel(APP_NAME)
-        title.setObjectName("AppTitle")
-        subtitle = QLabel(APP_TAGLINE)
-        subtitle.setObjectName("AppSubtitle")
-        titles.addWidget(title)
-        titles.addWidget(subtitle)
-
-        version = QLabel(f"v{APP_VERSION}")
-        version.setObjectName("VersionChip")
-
-        header_layout.addWidget(logo)
-        header_layout.addLayout(titles)
-        header_layout.addStretch(1)
-        header_layout.addWidget(version)
-        root.addWidget(header)
+        self.header = AppHeader()
+        self.header.programSelected.connect(self._show_program)
+        root.addWidget(self.header)
 
         toolbar = QWidget()
         toolbar.setObjectName("Toolbar")
@@ -278,7 +442,12 @@ class MainWindow(QMainWindow):
         bar.addWidget(self.zoom_label)
         bar.addWidget(self.btn_zoom_in)
         bar.addWidget(self.btn_zoom_fit)
-        root.addWidget(toolbar)
+
+        self.black_view = QWidget()
+        black_layout = QVBoxLayout(self.black_view)
+        black_layout.setContentsMargins(0, 0, 0, 0)
+        black_layout.setSpacing(0)
+        black_layout.addWidget(toolbar)
 
         self.controls = ControlsPanel()
         self.controls.setMinimumWidth(310)
@@ -309,7 +478,14 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 0)
         splitter.setSizes([344, 660, 380])
-        root.addWidget(splitter, 1)
+        black_layout.addWidget(splitter, 1)
+
+        self.compare_view = self._build_compare_view()
+
+        self.workspace = QStackedWidget()
+        self.workspace.addWidget(self.black_view)
+        self.workspace.addWidget(self.compare_view)
+        root.addWidget(self.workspace, 1)
         self.setCentralWidget(central)
 
         self.progress = QProgressBar()
@@ -320,6 +496,93 @@ class MainWindow(QMainWindow):
         self.page_label.setObjectName("Hint")
         self.statusBar().addPermanentWidget(self.progress)
         self.statusBar().addPermanentWidget(self.page_label)
+
+    # ------------------------------------------------------------------
+    # Programmwechsel
+    # ------------------------------------------------------------------
+
+    def _build_compare_view(self) -> QWidget:
+        """Leere Maske fuer PDFcompare - der Inhalt folgt spaeter."""
+        view = QWidget()
+        layout = QVBoxLayout(view)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(6)
+        layout.addStretch(1)
+
+        title = QLabel(COMPARE_NAME)
+        title.setObjectName("AppTitle")
+        title.setAlignment(Qt.AlignCenter)
+        hint = QLabel("Hier entsteht die Vergleichsansicht.")
+        hint.setObjectName("Hint")
+        hint.setAlignment(Qt.AlignCenter)
+
+        layout.addWidget(title)
+        layout.addWidget(hint)
+        layout.addStretch(1)
+        return view
+
+    def _show_program(self, program: str) -> None:
+        """Zwischen PDFblack und PDFcompare umschalten."""
+        if program == self._program:
+            return
+        self._program = program
+        self.header.set_program(program)
+        self._fade_to(self.black_view if program == "pdfblack" else self.compare_view)
+
+    def _stop_fade(self) -> None:
+        """Laufendes Ein-/Ausblenden abbrechen und volle Deckkraft herstellen.
+
+        Ohne das Zuruecksetzen bliebe die halb ausgeblendete Maske stehen, wenn
+        waehrend der Animation ein neues Ziel gewaehlt wird. Die laufende
+        Nummer entwertet ausserdem alle noch haengenden Rueckrufe der alten
+        Animation, damit sie nicht spaeter eine falsche Maske einschalten.
+        """
+        self._fade_serial += 1
+        for animation in self._fades:
+            animation.stop()
+        self._fades.clear()
+        if isinstance(self.workspace.graphicsEffect(), QGraphicsOpacityEffect):
+            self.workspace.setGraphicsEffect(None)
+
+    def _fade_to(self, page: QWidget) -> None:
+        """Alte Maske ausblenden, neue einblenden."""
+        self._stop_fade()
+        if self.workspace.currentWidget() is page:
+            return
+
+        effect = QGraphicsOpacityEffect(self.workspace)
+        effect.setOpacity(1.0)
+        self.workspace.setGraphicsEffect(effect)
+
+        serial = self._fade_serial
+
+        fade_out = QPropertyAnimation(effect, b"opacity", self)
+        fade_out.setDuration(150)
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.0)
+
+        fade_in = QPropertyAnimation(effect, b"opacity", self)
+        fade_in.setDuration(200)
+        fade_in.setStartValue(0.0)
+        fade_in.setEndValue(1.0)
+        fade_in.setEasingCurve(QEasingCurve.InOutQuad)
+
+        def swap() -> None:
+            if serial != self._fade_serial:
+                return
+            self.workspace.setCurrentWidget(page)
+            fade_in.start()
+
+        def finish() -> None:
+            if serial != self._fade_serial:
+                return
+            self.workspace.setGraphicsEffect(None)
+            self._fades.clear()
+
+        fade_out.finished.connect(swap)
+        fade_in.finished.connect(finish)
+        self._fades = [fade_out, fade_in]
+        fade_out.start()
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&Datei")
@@ -414,6 +677,8 @@ class MainWindow(QMainWindow):
     def load_pdf(self, path: str) -> None:
         if self._busy:
             return
+        if self._program != "pdfblack":
+            self._show_program("pdfblack")
         password: str | None = None
         try:
             doc = open_document(path)

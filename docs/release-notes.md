@@ -1,6 +1,12 @@
-## PDFblack 1.0.9
+## PDFblack 1.1.0
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.1.0
+
+- **Zweites Programm in der Kopfzeile:** Rechts neben PDFblack steht jetzt PDFcompare mit eigenem Logo, Titel und Untertitel. Ein Klick auf ein Logo wechselt das Programm: PDFcompare fährt animiert nach links, bis sein Logo genau dort steht, wo Titel und Untertitel von PDFblack beginnen, und deckt sie ab. Ein Klick auf das PDFblack-Logo schiebt es wieder zurück an seinen Platz ab der Fenstermitte.
+- **Weiche Übergänge:** Beim Wechsel blendet die aktuelle Maske aus und die neue ein. Schnelles Hin- und Herklicken bricht den laufenden Übergang ab, ohne dass eine halb ausgeblendete oder falsche Maske zurückbleibt.
+- **PDFcompare-Maske:** Vorerst eine leere Ansicht mit Hinweis – der eigentliche Vergleich folgt.
 
 ### Neu in 1.0.9
 
@@ -49,7 +55,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.9-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.0-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 

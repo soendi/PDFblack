@@ -12,6 +12,7 @@ QMainWindow, QDialog { background: #14161b; }
 QWidget { color: #e6e8ec; }
 QWidget#Header { background: #171a20; border-bottom: 1px solid #23272f; }
 QWidget#Toolbar { background: #14161b; border-bottom: 1px solid #23272f; }
+QWidget#BrandOverlay { background: #171a20; }
 QFrame#Sidebar { background: #131519; border-right: 1px solid #23272f; }
 QFrame#Findings { background: #131519; border-left: 1px solid #23272f; }
 QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; border: none; }
