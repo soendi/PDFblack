@@ -330,6 +330,13 @@ _AI_DATE_ONLY = re.compile(
     r"\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{2,4}"
     r"|\d{4}\s*[-./]\s*\d{1,2}\s*[-./]\s*\d{1,2}"
 )
+# Jahreszahlen, die das Sprachmodell als Ort meldet: "2026", "10/2026",
+# "2025 - 2026", "10/2025 - 05/2026". Sie gehoeren nicht zu PLZ / Ort.
+_AI_YEAR_ONLY = re.compile(
+    r"(?<![\d/.])(?:\d{1,2}\s*[./]\s*)?(?:19|20)\d{2}(?![\d/])"
+    r"(?:\s*(?:-|–|—|bis)\s*"
+    r"(?:(?:\d{1,2}\s*[./]\s*)?(?:19|20)\d{2}|heute|jetzt|aktuell|laufend))?"
+)
 
 
 def _ai_location_is_date(entity_text: str) -> bool:
@@ -341,10 +348,14 @@ def _ai_location_is_date(entity_text: str) -> bool:
     Datumsregel, nicht zu den Postleitzahlen.
     """
     cleaned = entity_text.strip()
-    if not _AI_DATE_ONLY.search(cleaned):
-        return False
-    rest = _AI_DATE_ONLY.sub("", cleaned)
-    return not any(char.isalpha() for char in rest)
+    for muster in (_AI_DATE_ONLY, _AI_YEAR_ONLY):
+        treffer = muster.search(cleaned)
+        if treffer is None:
+            continue
+        rest = cleaned[: treffer.start()] + cleaned[treffer.end() :]
+        if not any(char.isalpha() for char in rest):
+            return True
+    return False
 
 
 def looks_like_street(token: str) -> bool:

@@ -1,6 +1,12 @@
-## PDFblack 1.2.1
+## PDFblack 1.2.2
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.2.2
+
+- **Jahreszahlen sind keine Postleitzahlen mehr:** `2026`, `2026 -`, `2025 - 2026`, `10/2026 -` und `10/2025 - 05/2026` wurden bisher in Bewerbungen als Schweizer PLZ samt Ort erkannt, weil hinter der Zahl irgendein Wort stand („2026 Muster AG“, „2026 Berufsmaturität“). Vierstellige Zahlen von 1900 bis 2099 gelten jetzt nur noch dann als PLZ, wenn ein `CH-`/`CH ` davorsteht oder ein echter Ort folgt (`2000 Neuchâtel`, `1950 Sion`); Firmen, Ausbildungen und Rollen machen daraus keine PLZ mehr.
+- **Auch die KI-Erkennung trennt beides:** Meldet das Sprachmodell eine Jahreszahl als Ort, wird sie als Datum behandelt und nicht mehr unter „PLZ / Ort“ geschwärzt. Das gilt auch für Zeiträume wie `10/2025 - 05/2026`.
+- **Zeilenumbrüche:** Die Erkennung „Ort in der Zeile darüber/darunter“ gilt nur noch für eindeutige Postleitzahlen außerhalb des Jahresbands – eine allein stehende Jahreszahl am Zeilenende wird nicht mehr zur PLZ.
 
 ### Neu in 1.2.1
 
@@ -90,13 +96,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.2.1-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.2.2-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 57 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 59 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

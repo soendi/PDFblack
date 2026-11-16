@@ -98,6 +98,19 @@ _CH_CITY_WORD = (
 # "4711-2233" und "PE-8842/2024" sind Nummern, keine Postleitzahlen.
 _CH_PLZ_LEAD = r"(?<![\d\w\-/.'\u2019])"
 _CH_PLZ = r"(?:1\d{3}|[2-9]\d{3})"
+# Vierstellige Zahlen von 1900 bis 2099 sind in Bewerbungen fast immer
+# Jahreszahlen ("2026 Muster AG", "10/2025 - 05/2026"). Als PLZ zaehlen sie
+# nur mit CH-Praefix oder wenn ein Ort folgt, den es in dieser Region gibt.
+_CH_JAHRBAND = r"(?:19|20)\d{2}"
+_CH_PLZ_FREI = r"(?:1[0-8]\d{2}|(?:2[1-9]|[3-9]\d)\d{2})"
+_CH_ORTE_JAHRBAND = (
+    # Neuenburg und Wallis: die einzigen Gegenden mit PLZ im Jahresband.
+    "Neuchâtel|Neuenburg|Neuchatel|Sion|Martigny|Monthey|Colombier|Peseux|"
+    "Corcelles|Hauterive|Saint-Blaise|Auvernier|Marin|Epagnier|Cornaux|Cressier|"
+    "Valangin|Boudevilliers|Cernier|Fontainemelon|Les Hauts-Geneveys|"
+    "Fully|Chamoson|Riddes|Saxon|Saillon|Leytron|Charrat|Bovernier|Isérables|"
+    "Nendaz|Verbier|Bagnes|Levron|Vollèges"
+)
 
 _DAY = r"(?:0?[1-9]|[12]\d|3[01])"
 _MONTH = r"(?:0?[1-9]|1[0-2])"
@@ -182,9 +195,23 @@ RULES: tuple[Rule, ...] = (
         category=Category.POSTAL,
         case_sensitive=True,
         pattern=(
-            rf"{_CH_PLZ_LEAD}{_CH_PLZ}(?!\d)[ \t]+"
+            rf"{_CH_PLZ_LEAD}{_CH_PLZ_FREI}(?!\d)[ \t]+"
             rf"(?!(?i:{_CH_STOPWORDS})\b)"
             rf"{_CH_CITY_WORD}(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
+        ),
+    ),
+    Rule(
+        key="ch_postal_city_jahrband",
+        label="Schweizer PLZ + Ort (Jahresband 1900-2099)",
+        group="ch_postal",
+        category=Category.POSTAL,
+        case_sensitive=True,
+        pattern=(
+            rf"{_CH_PLZ_LEAD}{_CH_JAHRBAND}(?!\d)[ \t]+"
+            # Nur ein echter Ort macht aus "2026" eine PLZ - eine Firma,
+            # eine Ausbildung oder eine Rolle dagegen nicht.
+            rf"(?i:{_CH_ORTE_JAHRBAND})\b"
+            rf"(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
         ),
     ),
     Rule(
@@ -194,7 +221,7 @@ RULES: tuple[Rule, ...] = (
         category=Category.POSTAL,
         case_sensitive=True,
         pattern=(
-            rf"{_CH_PLZ_LEAD}{_CH_PLZ}(?!\d)[ \t]*\n[ \t]*"
+            rf"{_CH_PLZ_LEAD}{_CH_PLZ_FREI}(?!\d)[ \t]*\n[ \t]*"
             rf"(?!(?i:{_CH_STOPWORDS})\b)"
             rf"{_CH_CITY_WORD}(?:[ \t]+{_CH_CITY_WORD}){{0,2}}"
         ),
@@ -207,7 +234,7 @@ RULES: tuple[Rule, ...] = (
         case_sensitive=True,
         pattern=(
             rf"(?:^|\n)[ \t]*(?!(?i:{_CH_STOPWORDS})\b){_CH_CITY_WORD}"
-            rf"(?:[ \t]+{_CH_CITY_WORD}){{0,2}}[ \t]*\n[ \t]*{_CH_PLZ}(?!\d)"
+            rf"(?:[ \t]+{_CH_CITY_WORD}){{0,2}}[ \t]*\n[ \t]*{_CH_PLZ_FREI}(?!\d)"
         ),
     ),
     Rule(

@@ -400,3 +400,56 @@ def test_datum_oben_rechts_ist_kein_plz_ort(tmp_path, monkeypatch):
         Category.DATE
     ]
     assert not [f for f in result.findings if f.category is Category.POSTAL], found
+
+
+def test_jahreszahlen_sind_keine_postleitzahlen(tmp_path):
+    """Vierstellige Jahreszahlen gehoeren nicht zu PLZ / Ort."""
+    path = tmp_path / "jahre.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    zeilen = [
+        "Lebenslauf",
+        "2026",
+        "2026 -",
+        "2025 - 2026",
+        "10/2026 -",
+        "10/2025 - 05/2026",
+        "2026 Muster AG",
+        "2019 Muster AG, Zuerich",
+        "2026 Berufsmaturitaet",
+        "Zeitraum: 2024 - 2026",
+        "Muster AG",
+        "2026",
+        "2000 Neuchatel",
+        "1950 Sion",
+        "8045 Zuerich",
+        "CH-3000 Bern",
+    ]
+    for index, zeile in enumerate(zeilen):
+        page.insert_text((60, 100 + index * 22), zeile, fontsize=11, fontname="helv")
+    doc.save(str(path))
+    doc.close()
+
+    result = run_detection(
+        str(path),
+        DetectionOptions(use_ai=False, ai_entities=(), rule_groups=("ch_postal",)),
+    )
+    found = texts(result.findings)
+
+    # Kein Jahr darf als PLZ auftauchen - weder allein noch mit Firma dahinter.
+    for jahr in ("2024", "2025", "2026", "2019"):
+        assert not any(jahr in item for item in found), (jahr, found)
+    # Echte Postleitzahlen bleiben erhalten.
+    assert "2000 Neuchatel" in found
+    assert "1950 Sion" in found
+    assert "8045 Zuerich" in found
+    assert "CH-3000 Bern" in found
+
+
+def test_ki_ort_mit_jahreszahl_ist_kein_ort():
+    from pdfblack.core.detect import _ai_location_is_date
+
+    for jahr in ("2026", "10/2026", "2025 - 2026", "10/2025 - 05/2026", "20.10.2026"):
+        assert _ai_location_is_date(jahr), jahr
+    for ort in ("Sion", "8045 Zürich", "Neuchâtel"):
+        assert not _ai_location_is_date(ort), ort
