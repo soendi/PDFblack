@@ -223,6 +223,81 @@ def release_page() -> str:
     return f"https://github.com/{repository()}/releases/latest"
 
 
+def _pid_alive(pid: int) -> bool:
+    try:
+        if sys.platform.startswith("win"):
+            import ctypes
+
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # QUERY
+            if not handle:
+                return False
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        # Beendete, aber noch nicht abgeholte Prozesse gelten als beendet.
+        try:
+            with open(
+                f"/proc/{pid}/stat", "r", encoding="utf-8", errors="ignore"
+            ) as handle:
+                rest = handle.read().rsplit(")", 1)
+            if len(rest) == 2 and rest[1].strip().startswith("Z"):
+                return False
+        except OSError:
+            pass
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    except Exception:  # noqa: BLE001 - im Zweifel weiter warten
+        return True
+    return True
+
+
+def wait_for_exit(pid: int, timeout: float = 120.0) -> None:
+    """Warten, bis der Prozess mit dieser PID beendet ist.
+
+    Das Setup darf erst starten, wenn das alte Fenster zu ist - sonst kann
+    Windows die Programmdateien nicht ersetzen.
+    """
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+
+            handle = ctypes.windll.kernel32.OpenProcess(0x00100000, False, pid)
+            if handle:
+                ctypes.windll.kernel32.WaitForSingleObject(
+                    handle, int(timeout * 1000)
+                )
+                ctypes.windll.kernel32.CloseHandle(handle)
+                return
+        except Exception:  # noqa: BLE001 - Rueckfall auf die Schleife
+            pass
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _pid_alive(pid):
+            return
+        time.sleep(0.1)
+
+
+def launch_installer(archive: Path) -> bool:
+    """Setup still starten, ohne auf das Ende zu warten."""
+    try:
+        subprocess.Popen(  # noqa: S603 - feste Argumentliste, eigene Datei
+            [str(archive), *INSTALL_FLAGS], close_fds=True
+        )
+    except OSError as exc:
+        log.error("Setup liess sich nicht starten: %s", exc)
+        return False
+    return True
+
+
+def helper_command(archive: Path, pid: int) -> list[str]:
+    """Aufruf des Helfers, der auf das Ende dieses Prozesses wartet."""
+    if getattr(sys, "frozen", False):
+        base = [sys.executable]
+    else:
+        base = [sys.executable, "-m", "pdfblack"]
+    return [*base, "--apply-update", str(archive), "--wait-pid", str(pid)]
+
+
 def can_install() -> bool:
     """Kann diese Installation sich selbst ersetzen?"""
     return sys.platform.startswith("win") and bool(getattr(sys, "frozen", False))
@@ -244,15 +319,15 @@ def install(archive: Path) -> InstallResult:
         subprocess, "CREATE_NO_WINDOW", 0
     )
     try:
-        process = subprocess.Popen(  # noqa: S603 - feste Argumentliste, eigene Datei
-            [str(archive), *INSTALL_FLAGS],
+        process = subprocess.Popen(  # noqa: S603 - eigener Aufruf, eigene Datei
+            helper_command(archive, os.getpid()),
             close_fds=True,
             creationflags=flags,
         )
     except OSError as exc:
         return InstallResult(False, f"Der Installer liess sich nicht starten: {exc}")
-    # Bricht das Setup sofort ab, bleibt die Anwendung offen und verweist auf
-    # die Release-Seite - sonst waere nach dem Schliessen gar nichts passiert.
+    # Der Helfer wartet auf das Ende dieses Prozesses. Bricht er sofort ab,
+    # bleibt die Anwendung offen und verweist auf die Release-Seite.
     deadline = time.monotonic() + SETUP_GRACE
     while time.monotonic() < deadline:
         code = process.poll()
@@ -260,13 +335,13 @@ def install(archive: Path) -> InstallResult:
             if code != 0:
                 return InstallResult(
                     False,
-                    f"Das Setup wurde ohne Installation beendet (Code {code}). "
+                    f"Der Update vorbereitende Aufruf wurde beendet (Code {code}). "
                     f"Bitte die neue Fassung von {release_page()} installieren.",
                 )
             break
         time.sleep(0.1)
     return InstallResult(
         True,
-        "Das Update wird im Hintergrund eingespielt, PDFblack oeffnet sich "
-        "danach von selbst wieder.",
+        "PDFblack schliesst sich jetzt. Das Setup startet, sobald das Fenster "
+        "zu ist, und oeffnet PDFblack danach wieder.",
     )

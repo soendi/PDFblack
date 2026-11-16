@@ -1,6 +1,12 @@
-## PDFblack 1.1.1
+## PDFblack 1.1.2
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.1.2
+
+- **Kopfzeile:** Titel und Untertitel von PDFcompare bleiben jetzt beim Wechsel exakt am Logo. Bisher blieb der eingeblendete Text an der alten Stelle stehen, weil Qt das zwischengespeicherte Bild des Einblend-Effekts beim Verschieben nicht mitgenommen hat; jetzt wird der Text über seine Farbe ein- und ausgeblendet.
+- **Update ohne Fehlermeldung:** PDFblack schließt sich sofort, und der Installer startet erst, wenn der Prozess wirklich beendet ist. Ein kleiner mitgelieferter Helfer wartet auf das Ende des Fensters, startet dann das Setup und öffnet PDFblack nach dem Einbau wieder. Bisher konnte das Setup anlaufen, während das Fenster noch offen war.
+- **PDFcompare-Listen:** Wird eine Datei in „Lebenslauf" oder „Arbeitszeugnisse" gezogen, verschwindet sie aus „Zuletzt geschwärzt" und aus der jeweils anderen Liste – jede Datei steht nur in einer Liste.
 
 ### Neu in 1.1.1
 
@@ -61,13 +67,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.1-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.2-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 32 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 35 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

@@ -107,6 +107,14 @@ class DropList(QListWidget):
         event.acceptProposedAction()
         self._changed()
 
+    def remove_path(self, path: str) -> bool:
+        path = os.path.abspath(path)
+        for index in range(self.count()):
+            if self.item(index).data(Qt.UserRole) == path:
+                self.takeItem(index)
+                return True
+        return False
+
     # -- Inhalt -------------------------------------------------------
 
     def add_file(self, path: str) -> bool:
@@ -137,7 +145,7 @@ class DropList(QListWidget):
 
     def _changed(self) -> None:
         if self._on_change is not None:
-            self._on_change()
+            self._on_change(self)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
@@ -178,14 +186,14 @@ class CompareView(QWidget):
         life_title = QLabel("Lebenslauf")
         life_title.setObjectName("SectionLabel")
         right.addWidget(life_title)
-        self.life = DropList(on_change=self._store)
+        self.life = DropList(on_change=self._changed)
         self.life.setMaximumHeight(170)
         right.addWidget(self.life, 0)
 
         cert_title = QLabel("Arbeitszeugnisse")
         cert_title.setObjectName("SectionLabel")
         right.addWidget(cert_title)
-        self.certs = DropList(on_change=self._store)
+        self.certs = DropList(on_change=self._changed)
         right.addWidget(self.certs, 1)
 
         layout.addLayout(right, 1)
@@ -199,24 +207,50 @@ class CompareView(QWidget):
         """Listen aus den Einstellungen aufbauen."""
         self._refreshing = True
         self.recent.clear()
+        self.life.set_files(_read_list(LIFE_KEY))
+        self.certs.set_files(_read_list(CERT_KEY))
+        zugeordnet = set(self.life.paths()) | set(self.certs.paths())
         for path in _read_list(RECENT_KEY):
-            if not os.path.exists(path):
+            if not os.path.exists(path) or path in zugeordnet:
                 continue
             item = QListWidgetItem(os.path.basename(path))
             item.setToolTip(path)
             item.setData(Qt.UserRole, path)
             self.recent.addItem(item)
-        self.life.set_files(_read_list(LIFE_KEY))
-        self.certs.set_files(_read_list(CERT_KEY))
         self._refreshing = False
 
     def remember(self, path: str) -> None:
         """Eine frisch geschwaerzte Datei oben in die Liste aufnehmen."""
         path = os.path.abspath(path)
+        if path in self.life.paths() or path in self.certs.paths():
+            # Steht schon in einem Stapel - eine Datei ist nur einmal gelistet.
+            return
         entries = [item for item in _read_list(RECENT_KEY) if item != path]
         entries.insert(0, path)
         _write_list(RECENT_KEY, entries[:MAX_RECENT])
         self.refresh()
+
+    def _changed(self, source: "DropList") -> None:
+        """Nach dem Ablegen: eine Datei steht immer nur in einer Liste."""
+        if self._refreshing:
+            return
+        assigned = set(source.paths())
+        other = self.certs if source is self.life else self.life
+        for path in list(other.paths()):
+            if path in assigned:
+                other.remove_path(path)
+        for path in assigned:
+            self._forget(path)
+        self._store()
+
+    def _forget(self, path: str) -> None:
+        """Datei aus der Liste der zuletzt geschwaerzten entfernen."""
+        for index in range(self.recent.count()):
+            if self.recent.item(index).data(Qt.UserRole) == path:
+                self.recent.takeItem(index)
+                break
+        rest = [entry for entry in _read_list(RECENT_KEY) if entry != path]
+        _write_list(RECENT_KEY, rest)
 
     def _store(self) -> None:
         if self._refreshing:

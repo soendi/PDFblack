@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import urllib.error
 from pathlib import Path
 
@@ -178,8 +179,14 @@ def test_einbau_startet_das_setup_still(monkeypatch, tmp_path):
     result = updater.install(archive)
 
     assert result.ok
-    assert "selbst wieder" in result.message
-    assert aufrufe == [[str(archive), "/SILENT", "/NORESTART", "/CLOSEAPPLICATIONS"]]
+    assert "schliesst sich jetzt" in result.message
+    # Nicht das Setup direkt: erst der Helfer, der auf das Ende dieses
+    # Prozesses wartet, damit das Fenster vor der Installation zu ist.
+    aufruf = aufrufe[0]
+    assert "--apply-update" in aufruf
+    assert str(archive) in aufruf
+    assert "--wait-pid" in aufruf
+    assert str(os.getpid()) in aufruf
 
 
 def test_installer_startet_das_programm_nach_dem_einbau():
@@ -219,3 +226,58 @@ def test_abgebrochenes_setup_bleibt_offen(monkeypatch, tmp_path):
     assert result.ok is False
     assert "Code 5" in result.message
     assert updater.release_page() in result.message
+
+
+def test_helfer_wartet_auf_das_ende_des_fensters():
+    """Der Helfer laeuft erst weiter, wenn der alte Prozess beendet ist."""
+    import subprocess
+    import sys
+    import time
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.4)"])
+    start = time.monotonic()
+    updater.wait_for_exit(child.pid, timeout=10)
+    gedauert = time.monotonic() - start
+    child.wait(timeout=5)
+
+    assert gedauert < 5
+    assert updater._pid_alive(child.pid) is False
+
+
+def test_helfer_aufruf_nutzt_das_eigene_programm(monkeypatch, tmp_path):
+    archive = tmp_path / "PDFblack-1.1.2-Setup.exe"
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "executable", "C:\\Apps\\PDFblack.exe")
+
+    aufruf = updater.helper_command(archive, 1234)
+
+    assert aufruf[0] == "C:\\Apps\\PDFblack.exe"
+    assert aufruf[1:3] == ["--apply-update", str(archive)]
+    assert aufruf[-2:] == ["--wait-pid", "1234"]
+
+
+def test_helfer_startet_das_setup_erst_wenn_das_fenster_zu_ist(monkeypatch):
+    """Der Installer laeuft erst, nachdem der alte Prozess beendet ist."""
+    import subprocess
+    import sys
+
+    from pdfblack import app as app_module
+    from pdfblack.core import updater as updater_module
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.4)"])
+    gesehen: dict[str, object] = {}
+
+    def fake_launch(archive):
+        gesehen["fenster_zu"] = child.poll() is not None
+        gesehen["archive"] = str(archive)
+        return True
+
+    monkeypatch.setattr(updater_module, "launch_installer", fake_launch)
+
+    code = app_module._apply_update(
+        ["pdfblack", "--apply-update", "/tmp/neu.exe", "--wait-pid", str(child.pid)]
+    )
+
+    assert code == 0
+    assert gesehen["fenster_zu"] is True
+    assert gesehen["archive"] == "/tmp/neu.exe"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import logging
 import os
 import sys
@@ -68,6 +70,32 @@ def _self_test() -> int:
     return 0
 
 
+def _apply_update(argv: list[str]) -> int:
+    """Wartet auf das Ende des alten Fensters und startet dann das Setup.
+
+    Der Installer darf erst laufen, wenn PDFblack wirklich beendet ist - sonst
+    kann Windows die Programmdateien nicht ersetzen. Dieser Helfer laeuft als
+    eigener, abgekoppelter Prozess weiter, waehrend sich das Fenster schliesst.
+    """
+    from .core.updater import launch_installer, wait_for_exit
+
+    index = argv.index("--apply-update")
+    if index + 1 >= len(argv):
+        return 2
+    archive = Path(argv[index + 1])
+    pid = 0
+    if "--wait-pid" in argv:
+        try:
+            pid = int(argv[argv.index("--wait-pid") + 1])
+        except (IndexError, ValueError):
+            pid = 0
+    if pid:
+        wait_for_exit(pid)
+    if not launch_installer(archive):
+        return 3
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
     _configure_logging()
@@ -77,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if "--self-test" in argv:
         return _self_test()
+    if "--apply-update" in argv:
+        return _apply_update(argv)
 
     os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
 

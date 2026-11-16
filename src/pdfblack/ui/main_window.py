@@ -16,6 +16,7 @@ from PySide6.QtCore import (
     Qt,
     QThread,
     QTimer,
+    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import QAction, QKeySequence
@@ -205,6 +206,9 @@ class _LogoButton(QLabel):
 class _BrandBlock(QWidget):
     """Logo, Titel und Untertitel eines Programms."""
 
+    TITLE_COLOR = (230, 232, 236)
+    SUBTITLE_COLOR = (139, 149, 165)
+
     def __init__(
         self,
         pixmap,
@@ -234,30 +238,38 @@ class _BrandBlock(QWidget):
         titles.addWidget(self.title)
         titles.addWidget(self.subtitle)
 
-        # Titel und Untertitel stecken in einem eigenen Widget: so laesst sich
-        # nur der Text ein- und ausblenden, das Logo bleibt sichtbar.
-        self.text = QWidget(self)
-        self.text.setObjectName("BrandText")
-        self.text.setLayout(titles)
-        self.text.setAttribute(Qt.WA_TranslucentBackground, True)
-        self._text_effect = QGraphicsOpacityEffect(self.text)
-        self._text_effect.setOpacity(1.0)
-        self.text.setGraphicsEffect(self._text_effect)
-
         layout.addWidget(self.logo, 0, Qt.AlignVCenter)
-        layout.addWidget(self.text, 0)
+        layout.addLayout(titles)
+
+        self._text_alpha = 1.0
+        self._apply_text_alpha(1.0)
         self.adjustSize()
 
-    @property
-    def text_effect(self) -> QGraphicsOpacityEffect:
-        return self._text_effect
+    # Der Text wird ueber die Farbe ein- und ausgeblendet, nicht ueber einen
+    # QGraphicsOpacityEffect: dessen zwischengespeichertes Bild bleibt beim
+    # Verschieben des Blocks stehen, wodurch Text und Logo auseinanderlaufen.
+    def _apply_text_alpha(self, alpha: float) -> None:
+        value = int(round(max(0.0, min(1.0, alpha)) * 255))
+        red, green, blue = self.TITLE_COLOR
+        self.title.setStyleSheet(
+            f"color: rgba({red}, {green}, {blue}, {value}); "
+            "font-size: 16px; font-weight: 700;"
+        )
+        red, green, blue = self.SUBTITLE_COLOR
+        self.subtitle.setStyleSheet(
+            f"color: rgba({red}, {green}, {blue}, {value}); font-size: 11px;"
+        )
 
     @property
     def text_opacity(self) -> float:
-        return float(self._text_effect.opacity())
+        return self._text_alpha
 
     def set_text_opacity(self, value: float) -> None:
-        self._text_effect.setOpacity(max(0.0, min(1.0, value)))
+        value = max(0.0, min(1.0, value))
+        if abs(value - self._text_alpha) < 0.004:
+            return
+        self._text_alpha = value
+        self._apply_text_alpha(value)
 
 
 class AppHeader(QWidget):
@@ -304,13 +316,26 @@ class AppHeader(QWidget):
 
         # Beim Start steht PDFcompare rechts und zeigt keinen Text.
         self.compare.set_text_opacity(0.0)
-        self._compare_fade = QPropertyAnimation(
-            self.compare.text_effect, b"opacity", self
-        )
-        self._black_fade = QPropertyAnimation(self.black.text_effect, b"opacity", self)
+        self._compare_fade = QVariantAnimation(self)
+        self._black_fade = QVariantAnimation(self)
         for animation in (self._compare_fade, self._black_fade):
             animation.setDuration(self.TEXT_MS)
             animation.setEasingCurve(QEasingCurve.InOutQuad)
+        self._compare_target = 0.0
+        self._black_target = 1.0
+        self._compare_fade.valueChanged.connect(
+            lambda value: self.compare.set_text_opacity(float(value))
+        )
+        self._black_fade.valueChanged.connect(
+            lambda value: self.black.set_text_opacity(float(value))
+        )
+        # Der letzte Animationsschritt trifft das Ziel nicht exakt.
+        self._compare_fade.finished.connect(
+            lambda: self.compare.set_text_opacity(self._compare_target)
+        )
+        self._black_fade.finished.connect(
+            lambda: self.black.set_text_opacity(self._black_target)
+        )
 
         self.black.logo.setToolTip(f"{APP_NAME} anzeigen")
         self.compare.logo.setToolTip(f"{COMPARE_NAME} anzeigen")
@@ -385,22 +410,22 @@ class AppHeader(QWidget):
         Rechts stehend zeigt PDFcompare keinen Text; beim Wechsel nach links
         blendet er ein, waehrend der Text von PDFblack ausblendet.
         """
-        compare_target = 1.0 if program == "pdfcompare" else 0.0
-        black_target = 0.0 if program == "pdfcompare" else 1.0
+        self._compare_target = 1.0 if program == "pdfcompare" else 0.0
+        self._black_target = 0.0 if program == "pdfcompare" else 1.0
         if not animate:
             for animation in (self._compare_fade, self._black_fade):
                 animation.stop()
-            self.compare.set_text_opacity(compare_target)
-            self.black.set_text_opacity(black_target)
+            self.compare.set_text_opacity(self._compare_target)
+            self.black.set_text_opacity(self._black_target)
             return
-        self._animate_text(self._compare_fade, self.compare, compare_target)
-        self._animate_text(self._black_fade, self.black, black_target)
+        self._animate_text(self._compare_fade, self.compare, self._compare_target)
+        self._animate_text(self._black_fade, self.black, self._black_target)
 
     @staticmethod
     def _animate_text(animation, block: "_BrandBlock", target: float) -> None:
         animation.stop()
-        animation.setStartValue(block.text_opacity)
-        animation.setEndValue(target)
+        animation.setStartValue(float(block.text_opacity))
+        animation.setEndValue(float(target))
         animation.start()
 
     def resizeEvent(self, event) -> None:
@@ -1314,10 +1339,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(result.message)
         if not self._update_silent:
             QMessageBox.information(self, "Update", result.message)
-        # Windows braucht einen Moment, damit der Installer PDFblack noch als
-        # laufend vorfindet und nach dem Update wieder starten kann.
-        delay = 3000 if sys.platform.startswith("win") else 500
-        QTimer.singleShot(delay, self.close)
+        # Der Installer startet erst, wenn dieser Prozess beendet ist (der
+        # Helfer wartet darauf) - das Fenster kann also sofort schliessen.
+        QTimer.singleShot(250, self.close)
 
     def _on_update_failed(self, message: str) -> None:
         self._update_download = None

@@ -74,6 +74,8 @@ def test_zuletzt_geschwaerzt_und_ziehen(qt_app, settings_dir, tmp_path):
     view.life.dropEvent(event)
     assert view.life.count() == 1
     assert view.life.paths() == [os.path.abspath(pfad)]
+    # Zugeordnete Dateien stehen nicht mehr unter "zuletzt geschwaerzt".
+    assert view.recent.count() == 0
 
     # Zweimal ablegen legt keinen zweiten Eintrag an.
     mime, event = _drop_event(pfad)
@@ -83,20 +85,27 @@ def test_zuletzt_geschwaerzt_und_ziehen(qt_app, settings_dir, tmp_path):
     # Die Zuordnung ueberdauert einen Neuaufbau.
     QtCore.QSettings().sync()
     wieder = CompareView()
-    assert wieder.recent.count() == 1
+    assert wieder.recent.count() == 0
     assert wieder.life.count() == 1
     assert wieder.certs.count() == 0
 
+    # Verschieben in die andere Liste: nur dort steht die Datei noch.
+    mime2, event2 = _drop_event(pfad)
+    wieder.certs.dropEvent(event2)
+    assert wieder.certs.count() == 1
+    assert wieder.life.count() == 0
+
     # Entfernen mit der Entf-Taste leert den Stapel wieder.
-    wieder.life.setCurrentRow(0)
+
     key = QtGui.QKeyEvent(
         QtCore.QEvent.KeyPress, QtCore.Qt.Key_Delete, QtCore.Qt.NoModifier
     )
-    wieder.life.keyPressEvent(key)
-    assert wieder.life.count() == 0
+    wieder.certs.setCurrentRow(0)
+    wieder.certs.keyPressEvent(key)
+    assert wieder.certs.count() == 0
     QtCore.QSettings().sync()
     leer = CompareView()
-    assert leer.life.count() == 0
+    assert leer.certs.count() == 0
 
     # Qt-Widgets vor dem naechsten Test sauber abraeumen.
     for widget in (view, wieder, leer):
