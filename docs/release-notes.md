@@ -1,6 +1,10 @@
-## PDFblack 1.0.7
+## PDFblack 1.0.8
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.0.8
+
+- **Datenschutz im Programm erklärt:** Unter **Hilfe → Datenschutz** öffnet sich ein eigenes Fenster mit den Angaben, die man für eine Freigabe braucht: Verarbeitung ausschließlich lokal, Microsoft Presidio als mitgelieferte Open-Source-Bibliothek statt Cloud-Dienst, die Update-Prüfung als einzige Netzwerkverbindung (abschaltbar über `--no-update` bzw. `PDFBLACK_NO_UPDATE=1`) und die Folgen für Auftragsverarbeitung und Drittlandtransfer. Dazu drei Hinweise für den Alltag: das Original bleibt unverändert liegen, die Erkennung ist statistisch, und die Dateien werden nicht verschlüsselt.
 
 ### Neu in 1.0.7
 
@@ -40,7 +44,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.7-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.8-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 

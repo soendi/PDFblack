@@ -55,6 +55,10 @@ QLineEdit, QPlainTextEdit, QComboBox {
     padding: 6px 8px; selection-background-color: #e5484d;
 }
 QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus { border: 1px solid #e5484d; }
+QTextBrowser {
+    background: #10131a; border: 1px solid #262b34; border-radius: 8px;
+    padding: 8px;
+}
 QLineEdit:disabled, QPlainTextEdit:disabled { color: #5b6472; }
 QComboBox::drop-down { border: none; width: 18px; }
 QComboBox QAbstractItemView {

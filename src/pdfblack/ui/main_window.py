@@ -11,6 +11,7 @@ from PySide6.QtCore import QRect, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSplitter,
     QStackedWidget,
+    QTextBrowser,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -46,6 +48,54 @@ from ..core.updater import (
 from .branding import logo_pixmap
 from .canvas import PdfCanvas
 from .panels import ControlsPanel, DropZone, FindingsPanel
+
+
+PRIVACY_HTML = """
+<h3>Alles bleibt auf diesem Rechner</h3>
+<p>PDFblack liest, prüft und schwärzt PDF-Dateien ausschließlich lokal auf dem
+Rechner, auf dem das Programm läuft. Der Inhalt Ihrer Dokumente, die erkannten
+Namen und Adressen sowie die Namen der geöffneten Dateien werden nicht
+übertragen – weder an den Hersteller noch an Dritte.</p>
+
+<p><b>Microsoft Presidio ist kein Cloud-Dienst.</b> Presidio ist eine
+Open-Source-Bibliothek (MIT-Lizenz), die im Programm selbst mitläuft – zusammen
+mit dem Sprachmodell spaCy. Der Name „Microsoft“ bezeichnet nur die Herkunft des
+Projekts, nicht einen Empfänger Ihrer Daten. Es gibt keine Serveradresse, an die
+Text geschickt würde, und die Erkennung funktioniert auch ohne
+Internetverbindung.</p>
+
+<p><b>Die einzige Netzwerkverbindung</b> ist die Update-Prüfung. Sie fragt beim
+Start bei GitHub (github.com bzw. api.github.com) nach einer neueren Version.
+Dabei werden nur die IP-Adresse, eine Programm-Kennung und die installierte
+Versionsnummer übertragen – kein Dokumentinhalt und keine Dateinamen.
+Abschalten lässt sich das über <tt>pdfblack --no-update</tt> oder die
+Umgebungsvariable <tt>PDFBLACK_NO_UPDATE=1</tt>.</p>
+
+<h3>Was das datenschutzrechtlich bedeutet</h3>
+<ul>
+<li>Ihre Daten werden nicht an einen Auftragsverarbeiter weitergegeben; ein
+Vertrag zur Auftragsverarbeitung nach Art. 28 DSGVO ist dafür nicht
+erforderlich.</li>
+<li>Es findet keine Übermittlung in ein Drittland statt (Art. 44 ff. DSGVO),
+weil keine Daten das Gerät verlassen.</li>
+<li>Verantwortlich für die Verarbeitung bleiben Sie bzw. Ihre Organisation –
+PDFblack ist ein Werkzeug, das auf Ihrem Gerät arbeitet.</li>
+</ul>
+
+<h3>Was Sie selbst beachten sollten</h3>
+<ul>
+<li>Die geschwärzte Fassung ist eine neue Datei; das Original bleibt unverändert
+und enthält weiterhin alle Daten. Geben Sie nur die geschwärzte Datei weiter und
+löschen Sie das Original, wenn es nicht mehr gebraucht wird.</li>
+<li>Die Erkennung arbeitet statistisch. Prüfen Sie jede Datei in der Vorschau,
+bevor Sie sie aus der Hand geben.</li>
+<li>PDFblack verschlüsselt keine Dateien. Wer Zugriff auf den Rechner oder den
+Speicherort hat, kann die gespeicherten PDFs lesen.</li>
+</ul>
+
+<p><i>Diese Hinweise beschreiben die technische Funktionsweise des Programms und
+sind keine Rechtsberatung.</i></p>
+"""
 
 
 class DetectionWorker(QThread):
@@ -314,6 +364,10 @@ class MainWindow(QMainWindow):
         self.update_action.triggered.connect(lambda: self._check_updates(silent=False))
         help_menu.addAction(self.update_action)
         help_menu.addSeparator()
+
+        privacy = QAction("Datenschutz", self)
+        privacy.triggered.connect(self._show_privacy)
+        help_menu.addAction(privacy)
 
         about = QAction(f"Über {APP_NAME}", self)
         about.triggered.connect(self._show_about)
@@ -762,6 +816,39 @@ class MainWindow(QMainWindow):
             "Text unter den Markierungen wirklich entfernt ist. Das Original "
             "bleibt unverändert.",
         )
+
+    def _show_privacy(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Datenschutz")
+        dialog.resize(660, 620)
+        dialog.setMinimumSize(520, 400)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(20, 18, 20, 16)
+        layout.setSpacing(12)
+
+        title = QLabel("Datenschutz")
+        title.setObjectName("AppTitle")
+        layout.addWidget(title)
+
+        subtitle = QLabel("Wie PDFblack mit den Daten in Ihren PDF-Dateien umgeht.")
+        subtitle.setObjectName("AppSubtitle")
+        layout.addWidget(subtitle)
+
+        text = QTextBrowser()
+        text.setOpenExternalLinks(True)
+        text.setHtml(PRIVACY_HTML)
+        layout.addWidget(text, 1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        close = QPushButton("Schließen")
+        close.clicked.connect(dialog.accept)
+        close.setDefault(True)
+        buttons.addWidget(close)
+        layout.addLayout(buttons)
+
+        dialog.exec()
 
     def _show_about(self) -> None:
         QMessageBox.about(
