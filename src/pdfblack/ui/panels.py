@@ -301,7 +301,7 @@ class ControlsPanel(QScrollArea):
         self.cb_contact.setChecked(True)
         self.cb_bank = QCheckBox("Bankdaten (IBAN)")
         self.cb_bank.setChecked(True)
-        self.cb_date = QCheckBox("Datum (z. B. Geburtsdatum)")
+        self.cb_date = QCheckBox("Datum (Geburts-, Rechnungs-, Ablaufdatum)")
         self.cb_date.setChecked(False)
         for box in (
             self.cb_person,

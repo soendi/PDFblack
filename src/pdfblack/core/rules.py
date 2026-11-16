@@ -99,6 +99,12 @@ _CH_CITY_WORD = (
 _CH_PLZ_LEAD = r"(?<![\d\w\-/.'\u2019])"
 _CH_PLZ = r"(?:1\d{3}|[2-9]\d{3})"
 
+_DAY = r"(?:0?[1-9]|[12]\d|3[01])"
+_MONTH = r"(?:0?[1-9]|1[0-2])"
+_YEAR = r"(?:19|20)\d{2}"
+_DATE_DOTTED = rf"{_DAY}[./]{_MONTH}[./](?:{_YEAR}|\d{{2}})"
+_DATE_ISO = rf"{_YEAR}-{_MONTH}-{_DAY}"
+
 _ID_SUFFIX = r"[. \t-]{0,2}(?:nummer|nr\.?|identifikationsnummer|id|zeichen|kennzeichen)"
 _ID_STEMS = (
     r"personal|pers|ausweis|kunden|vertrags|mitglieds|versicherungs|versicherten|"
@@ -247,6 +253,18 @@ RULES: tuple[Rule, ...] = (
         group="date",
         category=Category.DATE,
         pattern=r"(?:Geburtsdatum|Geburtstag|geb\.|geboren[ \t]+am)[ \t]*:?[ \t]*\d{1,2}\.[ \t]?\d{1,2}\.[ \t]?\d{2,4}",
+    ),
+    Rule(
+        key="date",
+        label="Datum",
+        group="date",
+        category=Category.DATE,
+        pattern=(
+            # 20.10.2026, 20.10.26, 20. 10. 2026 und ISO 2026-10-20.
+            # Bewusst auch ohne Beschriftung: Datumsangaben stehen in
+            # Kopfzeilen und Tabellen meist ohne "Datum:" davor.
+            rf"(?<![\d\w.])(?:{_DATE_ISO}|{_DATE_DOTTED})(?!\d)"
+        ),
     ),
 )
 

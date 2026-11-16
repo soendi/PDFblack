@@ -1,6 +1,11 @@
-## PDFblack 1.0.8
+## PDFblack 1.0.9
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.0.9
+
+- **Datum ist nicht mehr „PLZ / Ort“:** Steht ein Datum allein in der Kopfzeile („20.10.2026“), meldet das deutsche Sprachmodell es als Ort – in der Vorschau erschien es deshalb unter PLZ / Ort. Solche Treffer werden jetzt verworfen, echte Ortsnamen aber weiterhin erkannt.
+- **Datumsangaben ohne Beschriftung:** Die Datumsregel findet jetzt auch Daten, denen kein „Datum:“ vorangeht – `20.10.2026`, `20.10.26` und `2026-10-20`. Das Häkchen dafür heißt entsprechend „Datum (Geburts-, Rechnungs-, Ablaufdatum)“.
 
 ### Neu in 1.0.8
 
@@ -44,7 +49,7 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.8-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.0.9-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 

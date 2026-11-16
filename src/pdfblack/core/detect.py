@@ -326,6 +326,27 @@ def _ai_text_allowed(entity_text: str) -> bool:
     return True
 
 
+_AI_DATE_ONLY = re.compile(
+    r"\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{2,4}"
+    r"|\d{4}\s*[-./]\s*\d{1,2}\s*[-./]\s*\d{1,2}"
+)
+
+
+def _ai_location_is_date(entity_text: str) -> bool:
+    """Besteht ein als Ort gemeldeter KI-Treffer nur aus einem Datum?
+
+    Das deutsche spaCy-Modell labelt allein stehende Datumsangaben in
+    Kopfzeilen regelmaessig als LOC ("20.10.2026"); Presidio macht daraus
+    LOCATION und die Anzeige daraus "PLZ / Ort". Datumsangaben gehoeren zur
+    Datumsregel, nicht zu den Postleitzahlen.
+    """
+    cleaned = entity_text.strip()
+    if not _AI_DATE_ONLY.search(cleaned):
+        return False
+    rest = _AI_DATE_ONLY.sub("", cleaned)
+    return not any(char.isalpha() for char in rest)
+
+
 def looks_like_street(token: str) -> bool:
     lowered = token.lower()
     return any(lowered.endswith(ending) for ending in _STREET_ENDINGS)
@@ -509,6 +530,9 @@ def run_detection(
                             continue
                         entity_text = line[result.start : result.end]
                         if not _ai_text_allowed(entity_text):
+                            continue
+                        if category is Category.POSTAL and _ai_location_is_date(entity_text):
+                            # Datum statt Ort: die Datumsregel erfasst es.
                             continue
                         if category is Category.PERSON:
                             name_pool |= name_tokens(entity_text)

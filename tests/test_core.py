@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pymupdf
 import pytest
@@ -18,6 +19,7 @@ from pdfblack.core.detect import (  # noqa: E402
     DetectionOptions,
     ManualTerm,
     RegexSpec,
+    _ai_location_is_date,
     get_analyzer,
     name_tokens,
     run_detection,
@@ -25,6 +27,7 @@ from pdfblack.core.detect import (  # noqa: E402
 )
 from pdfblack.core.models import Category  # noqa: E402
 from pdfblack.core.redact import apply_redactions  # noqa: E402
+from pdfblack.core.rules import RULES  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -328,3 +331,72 @@ def test_term_pattern_ignoriert_leerraum():
     pattern = re.compile(term_pattern("Max  Mustermann"), re.IGNORECASE)
     assert pattern.search("hier: max   mustermann,")
     assert not pattern.search("Maximilian Mustermann")
+
+
+def test_datumsformen_sind_kein_ort():
+    """Datumsangaben zaehlen nicht als PLZ/Ort, Ortsnamen schon."""
+    assert _ai_location_is_date("20.10.2026")
+    assert _ai_location_is_date("20.10.26")
+    assert _ai_location_is_date("2026-10-20")
+    assert not _ai_location_is_date("9436 Balgach")
+    assert not _ai_location_is_date("Balgach, 20.10.2026")
+    # Eine reine Zahl ist kein Datum (PLZ allein bleibt moeglich).
+    assert not _ai_location_is_date("8045")
+
+
+def test_datumsregel_findet_die_drei_formen():
+    rule = next(rule for rule in RULES if rule.key == "date")
+    for text in ("20.10.2026", "20.10.26", "2026-10-20"):
+        assert re.fullmatch(rule.pattern, text), text
+
+
+def _kopfzeilen_pdf(path):
+    """PDF mit allein stehendem Datum oben rechts anlegen."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((470, 60), "20.10.2026", fontsize=9, fontname="helv")
+    page.insert_text((60, 200), "Mietlizenz", fontsize=14, fontname="helv")
+    doc.save(str(path))
+    doc.close()
+    return path
+
+
+def test_datum_oben_rechts_ist_kein_plz_ort(tmp_path, monkeypatch):
+    """Ein Datum in der Kopfzeile bleibt ein Datum.
+
+    Das deutsche spaCy-Modell labelt ein allein stehendes Datum als Ort (LOC),
+    Presidio macht daraus LOCATION und die Oberflaeche daraus "PLZ / Ort".
+    Der Treffer darf nicht als PLZ/Ort erscheinen, das Datum selbst aber
+    weiterhin ueber die Datumsregel gefunden werden.
+    """
+    source = _kopfzeilen_pdf(tmp_path / "kopfzeile.pdf")
+
+    class FakeAnalyzer:
+        """Meldet die Datumszeile als Ort, so wie es spaCy tut."""
+
+        def analyze(self, text, **kwargs):
+            cleaned = text.strip()
+            if not re.fullmatch(r"\d{1,2}\.\d{1,2}\.\d{4}", cleaned):
+                return []
+            start = text.index(cleaned)
+            return [
+                SimpleNamespace(
+                    entity_type="LOCATION",
+                    start=start,
+                    end=start + len(cleaned),
+                    score=0.85,
+                )
+            ]
+
+    monkeypatch.setattr("pdfblack.core.detect.get_analyzer", lambda: (FakeAnalyzer(), None))
+
+    result = run_detection(
+        str(source),
+        DetectionOptions(use_ai=True, ai_entities=("LOCATION",), rule_groups=("date",)),
+    )
+    found = texts(result.findings)
+    assert "20.10.2026" in found
+    assert [f.category for f in result.findings if f.text == "20.10.2026"] == [
+        Category.DATE
+    ]
+    assert not [f for f in result.findings if f.category is Category.POSTAL], found

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdfblack"
-version = "1.0.8"
+version = "1.0.9"
 description = "Automatische Schwaerzung personenbezogener Daten in PDF-Dateien"
 readme = "README.md"
 requires-python = ">=3.10"
