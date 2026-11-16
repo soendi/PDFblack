@@ -1,4 +1,4 @@
-# PDFblack 1.3.1
+# PDFblack 1.3.2
 
 Vertrauliche Daten in PDF-Dateien automatisch schwärzen – mit Vorschau, Prüfung
 und echter Entfernung des Textes.
@@ -133,11 +133,18 @@ sein (Windows: `tesseract-ocr`, üblicher Pfad `C:\Program Files\Tesseract-OCR`,
 wird automatisch gefunden). **PDFblack prüft das beim Start** und bietet an,
 Tesseract nachzuinstallieren, wenn es fehlt: über `winget` richtet es dann das
 Windows-Build `UB-Mannheim.TesseractOCR` still ein (Windows fragt nach der
-Freigabe); auf anderen Systemen erscheint nur der Hinweis samt Adresse
+Freigabe). Auf anderen Systemen erscheint nur der Hinweis samt Adresse
 <https://github.com/UB-Mannheim/tesseract/wiki>. Abschalten lässt sich die
 Prüfung über die Umgebungsvariable `PDFBLACK_NO_OCR_CHECK=1`; einen anderen
-Pfad nennt `PDFBLACK_TESSERACT` (direkt auf `tesseract.exe`). Das Wörterbuch
-ist Teil des Programms.
+Pfad nennt `PDFBLACK_TESSERACT` (direkt auf `tesseract.exe`).
+
+**Das deutsche Sprachmodell ist im Programm enthalten:** `deu.traineddata`
+liegt in `src/pdfblack/data/tessdata` (Quelle `tessdata_fast`, Apache-2.0),
+und PDFblack startet Tesseract immer mit `--tessdata-dir` auf diesen Ordner.
+Deshalb braucht die Erkennung weder eine Sprachauswahl im Setup noch einen
+Download und funktioniert offline; eine Ausrichtungserkennung (`osd`) ist
+nicht nötig. Andere Sprachen in der Auswahlliste laufen weiterhin über die
+Sprachdateien der Tesseract-Installation.
 
 **Berufsbezeichnungen** stehen in einer eigenen Liste
 (`src/pdfblack/data/berufe.json`, rund 11 500 Einträge in männlicher und
@@ -258,7 +265,7 @@ Alle Varianten setzen eine virtuelle Umgebung mit den Abhängigkeiten voraus.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-# Ergebnis: dist\PDFblack-1.3.1-Setup.exe  (benötigt Inno Setup 6)
+# Ergebnis: dist\PDFblack-1.3.2-Setup.exe  (benötigt Inno Setup 6)
 ```
 
 **macOS (.app + ZIP)**
@@ -306,6 +313,8 @@ Eigener Code: MIT. Verwendete Bibliotheken:
 - **PySide6 / Qt** – LGPL-3.0.
 - **Berufsbezeichnungen** (`src/pdfblack/data/berufe.json`) – Wikidata, CC0
   (gemeinfrei); ergänzt um eine eigene Liste gängiger Berufe.
+- **Deutsches Sprachmodell** (`src/pdfblack/data/tessdata/deu.traineddata`) –
+  `tessdata_fast` aus dem Tesseract-Projekt, Apache-2.0.
 - **PLZ- und Ortschaftsliste** (`src/pdfblack/data/plz_ch.json`) – amtliches
   Ortschaftenverzeichnis mit Postleitzahl von swisstopo/swisstopo.admin.ch
   (opendata.swiss, freie Nutzung, Quellenangabe erforderlich) sowie

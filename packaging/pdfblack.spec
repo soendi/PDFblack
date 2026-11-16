@@ -46,6 +46,11 @@ for package in (
 datas += [
     (str(SRC / "pdfblack" / "data" / "plz_ch.json"), "pdfblack/data"),
     (str(SRC / "pdfblack" / "data" / "berufe.json"), "pdfblack/data"),
+    # Deutsches Sprachmodell fuer Tesseract (tessdata_fast, Apache-2.0).
+    (
+        str(SRC / "pdfblack" / "data" / "tessdata" / "deu.traineddata"),
+        "pdfblack/data/tessdata",
+    ),
 ]
 
 hiddenimports += collect_submodules("presidio_analyzer.predefined_recognizers")

@@ -287,10 +287,10 @@ class AppHeader(QWidget):
     """Kopfzeile mit drei Programmen.
 
     PDFblack steht links, PDFcompare ab der Fenstermitte, PDFocr rechts neben
-    seinem Logo. Wird ein Programm gewaehlt, faehrt der blaue Block nach links,
-    bis sein Logo dort liegt, wo Titel und Untertitel von PDFblack beginnen.
-    PDFocr bleibt dabei genau rechts neben diesem Logo stehen - also dort, wo
-    der Text des blauen Buttons anfaengt.
+    seinem Logo. Wird ein Programm gewaehlt, faehrt dessen Logo genau dorthin,
+    wo Titel und Untertitel von PDFblack beginnen; die beiden anderen Bloecke
+    stehen an ihrem Platz. Der Text des blauen Buttons beginnt also dort, wo
+    beim Wechsel das Logo des gewaehlten Programms landet.
 
     Sichtbar ist immer nur der Text des aktiven Programms.
     """
@@ -419,13 +419,11 @@ class AppHeader(QWidget):
         if name == "pdfblack":
             return self.MARGIN
         if name == "pdfcompare":
-            # Beim Vergleich und bei der Texterkennung faehrt der blaue Button
-            # an den linken Rand, an den Anfang des PDFblack-Textes.
-            return self.title_x() if program != "pdfblack" else self.compare_rest_x()
-        if program == "pdfocr":
-            # Genau dort, wo der Text des blauen Buttons anfaengt.
-            return self.title_x() + self.LOGO_SIZE + self.GAP
-        return self.ocr_rest_x()
+            # Beim Vergleich faehrt der blaue Button an den Anfang des
+            # PDFblack-Textes, sonst steht er an seinem Platz.
+            return self.title_x() if program == "pdfcompare" else self.compare_rest_x()
+        # PDFocr steht genau dort, wo der Text des blauen Buttons anfaengt.
+        return self.title_x() if program == "pdfocr" else self.ocr_rest_x()
 
     def _place(self, animate: bool, program: str | None = None) -> None:
         if not hasattr(self, "_slides"):
@@ -1329,9 +1327,10 @@ class MainWindow(QMainWindow):
         install = None
         if tesseract_setup.moeglich():
             box.setInformativeText(
-                "Tesseract-OCR ist ein freies Programm für die Texterkennung. "
-                "PDFblack kann es jetzt über winget nachinstallieren – Windows "
-                "fragt dabei nach der Freigabe."
+                "Tesseract-OCR ist ein freies Programm für die Texterkennung "
+                "(das deutsche Sprachmodell bringt PDFblack mit). PDFblack "
+                "installiert es jetzt über winget – Windows fragt dabei nach "
+                "der Freigabe."
             )
             install = box.addButton("Jetzt installieren", QMessageBox.AcceptRole)
         else:

@@ -174,9 +174,10 @@ def test_drittes_programm_pdfocr(window):
     QtTest.QTest.qWait(600)
 
     assert window._program == "pdfocr"
-    # Blau faehrt nach links, gruen steht dort, wo der blaue Text beginnt.
-    assert header.compare.x() == header.title_x()
-    assert header.ocr.x() == header.title_x() + header.LOGO_SIZE + header.GAP
+    # Gruen steht genau dort, wo der blaue Text beginnt.
+    assert header.ocr.x() == header.title_x()
+    # Der Vergleichsbutton ist an seinen Platz zurueckgekehrt.
+    assert header.compare.x() == header.compare_rest_x()
     # Nur PDFocr zeigt Text.
     assert header.ocr.text_opacity > 0.99
     assert header.compare.text_opacity < 0.01

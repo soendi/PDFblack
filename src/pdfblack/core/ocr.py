@@ -43,6 +43,11 @@ SPRACHEN: dict[str, str] = {
     "Deutsch + Englisch": "deu+eng",
 }
 
+# Mitgelieferte Sprachdatei (tessdata_fast, Apache-2.0). Tesseract wird immer
+# auf diesen Ordner gezeigt (--tessdata-dir): die Erkennung laeuft damit offline
+# und ohne Downloads. Eine Ausrichtungserkennung (osd) braucht PDFblack nicht.
+TESSDATA = Path(__file__).resolve().parents[1] / "data" / "tessdata"
+
 # Zeichen, die die eingebaute Schrift (Helvetica) sicher setzen kann.
 _ERLAUBT = set(
     string.ascii_letters
@@ -113,17 +118,42 @@ def find_tesseract() -> str | None:
     return None
 
 
+def sprachen_mitgeliefert() -> set[str]:
+    """Welche Sprachdateien PDFblack mitbringt?"""
+    try:
+        return {datei.stem for datei in TESSDATA.glob("*.traineddata")}
+    except OSError:  # pragma: no cover - unlesbarer Ordner
+        return set()
+
+
 class TesseractEngine:
     """Tesseract ueber die Kommandozeile, Ausgabe als TSV mit Wortrechtecken."""
 
     name = "Tesseract"
 
-    def __init__(self, language: str = "deu", path: str | None = None) -> None:
+    def __init__(
+        self,
+        language: str = "deu",
+        path: str | None = None,
+        tessdata: str | None = None,
+    ) -> None:
         self.language = language
         self.path = path or find_tesseract()
+        self.tessdata = tessdata
 
     def available(self) -> bool:
         return bool(self.path and Path(self.path).exists())
+
+    def sprachdateien(self) -> list[str]:
+        return [name for name in self.language.split("+") if name]
+
+    def tessdata_dir(self) -> str | None:
+        """Mitgelieferte Sprachdateien - sonst der Standardordner von Tesseract."""
+        if self.tessdata:
+            return str(self.tessdata)
+        if set(self.sprachdateien()) <= sprachen_mitgeliefert():
+            return str(TESSDATA)
+        return None
 
     def read_words(self, png: bytes, size: tuple[int, int]) -> list[Word]:
         if not self.available():
@@ -135,10 +165,11 @@ class TesseractEngine:
             bild = Path(ordner) / "seite.png"
             bild.write_bytes(png)
             basis = Path(ordner) / "seite"
-            befehl = [
-                str(self.path),
-                str(bild),
-                str(basis),
+            befehl = [str(self.path), str(bild), str(basis)]
+            tessdata = self.tessdata_dir()
+            if tessdata:
+                befehl += ["--tessdata-dir", tessdata]
+            befehl += [
                 "-l",
                 self.language,
                 "--psm",
@@ -159,6 +190,16 @@ class TesseractEngine:
             datei = basis.with_suffix(".tsv")
             if not datei.exists():
                 meldung = ergebnis.stderr.decode("utf-8", "replace").strip()
+                if (
+                    "Failed loading language" in meldung
+                    or "couldn't load any languages" in meldung
+                    or "tessdata" in meldung
+                ):
+                    raise OcrError(
+                        f"Tesseract konnte die Sprache „{self.language}“ nicht "
+                        "laden. Mitgeliefert ist Deutsch; andere Sprachen "
+                        "brauchen die passende Tesseract-Installation."
+                    )
                 raise OcrError(
                     "Tesseract hat keine Ausgabe geliefert."
                     + (f" Meldung: {meldung}" if meldung else "")

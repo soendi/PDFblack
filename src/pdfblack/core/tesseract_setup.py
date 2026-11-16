@@ -1,10 +1,10 @@
 """Tesseract-OCR nachinstallieren.
 
-PDFocr braucht Tesseract als eigenes Programm. Fehlt es, bietet PDFblack beim
+PDFocr braucht Tesseract als eigenes Programm; fehlt es, bietet PDFblack beim
 Start an, es ueber die Windows-Paketverwaltung ``winget`` zu installieren
-(Paket ``UB-Mannheim.TesseractOCR``, das verbreitete Windows-Build). Auf allen
-anderen Systemen bleibt es beim Hinweis - dort installiert man Tesseract ueber
-die Paketverwaltung.
+(Paket ``UB-Mannheim.TesseractOCR``, das verbreitete Windows-Build). Die
+deutsche Sprachdatei ist im Programm enthalten und wird Tesseract per
+``--tessdata-dir`` gezeigt - es wird nichts nachgeladen.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from .ocr import find_tesseract
 
 LOGGER = logging.getLogger(__name__)
 
-# Windows-Build von UB Mannheim, das auch die deutschen Sprachdaten mitbringt.
 WINGET_ID = "UB-Mannheim.TesseractOCR"
 SEITE = "https://github.com/UB-Mannheim/tesseract/wiki"
 TIMEOUT = 900.0
@@ -89,8 +88,7 @@ def installieren(timeout: float = TIMEOUT) -> SetupResult:
         )
         return SetupResult(
             False,
-            "winget konnte Tesseract-OCR nicht installieren. Bitte von Hand "
-            f"installieren ({SEITE}).",
+            f"winget konnte Tesseract-OCR nicht installieren ({SEITE}).",
         )
     if find_tesseract() is None:
         return SetupResult(
@@ -99,4 +97,8 @@ def installieren(timeout: float = TIMEOUT) -> SetupResult:
             "Bitte PDFblack neu starten oder den Pfad in der "
             "Umgebungsvariablen PDFBLACK_TESSERACT setzen.",
         )
-    return SetupResult(True, "Tesseract-OCR wurde installiert.")
+    return SetupResult(
+        True,
+        "Tesseract-OCR ist installiert. Das deutsche Sprachmodell bringt "
+        "PDFblack selbst mit.",
+    )

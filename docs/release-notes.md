@@ -1,4 +1,14 @@
-## PDFblack 1.3.1
+## PDFblack 1.3.2
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.2
+
+- **Das deutsche Sprachmodell ist im Programm:** `deu.traineddata` (Quelle `tessdata_fast`, Apache-2.0) liegt in der Anwendung, und PDFblack startet Tesseract immer mit `--tessdata-dir` auf diesen Ordner. Die Texterkennung funktioniert damit offline und ohne Nachladen; die Meldung „Error opening data file …\deu.traineddata“ bzw. „Failed loading language 'deu'“ kann nicht mehr auftreten. Eine Ausrichtungserkennung (`osd`) braucht PDFblack nicht.
+- **Installation bringt die Sprache mit:** Die stille Installation über `winget` richtet nur das Tesseract-Programm samt Englisch ein – Deutsch kommt jetzt aus dem Programm selbst. Nach der Nachinstallation ist PDFocr sofort einsatzbereit, ohne zweiten Download und ohne Schreibrechte im Programmverzeichnis.
+- **Grüner Knopf am Textanfang:** Beim Wechsel zu PDFocr steht das grüne „T“-Logo jetzt genau dort, wo der Text des blauen Knopfes beginnt; der Vergleichsknopf fährt an seinen Platz zurück, statt daneben stehen zu bleiben.
+
+### Neu in 1.3.1
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
@@ -113,13 +123,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.1-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.2-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 99 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 101 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, mitgelieferte Tesseract-Sprachdatei, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 
