@@ -138,3 +138,105 @@ def test_copilot_verknuepfung_wird_gemerkt(qt_app, settings_dir):
     assert wieder.linked.isChecked() is True
     assert wieder.agent.currentText() == "Bewerbungen"
     assert wieder.open_button.isEnabled() is True
+
+
+def test_uebergabe_beschriftet_lebenslauf_und_zeugnisse(tmp_path):
+    from pdfblack.ui import compare
+
+    ordner = tmp_path / "quelle"
+    ordner.mkdir()
+    life = _pdf(ordner / "bewerbung_mueller.pdf")
+    cert = _pdf(ordner / "zeugnis_2024.pdf")
+    # Zweite Zeugnisdatei mit gleichem Namen aus einem anderen Ordner.
+    zweiter = tmp_path / "alt"
+    zweiter.mkdir()
+    cert2 = _pdf(zweiter / "zeugnis_2024.pdf")
+
+    ziel = compare.handover_folder("Bewerbungen")
+    dateien = compare.handover_files(ziel, [life], [cert, cert2])
+    namen = sorted(pfad.name for pfad in dateien)
+
+    assert namen == [
+        "Arbeitszeugnis_zeugnis_2024.pdf",
+        "Arbeitszeugnis_zeugnis_2024_2.pdf",
+        "Lebenslauf_bewerbung_mueller.pdf",
+    ]
+    assert all(pfad.read_bytes() == b"%PDF-1.4\n%Testdatei\n" for pfad in dateien)
+
+    # Ein zweiter Klick erzeugt dieselben Namen statt immer neuer Zusaetze.
+    wieder = compare.handover_files(ziel, [life], [cert, cert2])
+    assert sorted(pfad.name for pfad in wieder) == namen
+
+
+def test_knoepfe_unter_den_zeugnissen(qt_app, settings_dir):
+    from pdfblack.ui import compare, preferences
+
+    preferences.save_agents([])
+    view = compare.CompareView()
+    assert [knopf.text() for knopf in view.agent_buttons] == ["Einstellungen Copilot"]
+    assert view.agent_buttons[0].objectName() == "AgentSettings"
+    ausgeloest: list[bool] = []
+    view.settingsRequested.connect(lambda: ausgeloest.append(True))
+    view.agent_buttons[0].click()
+    assert ausgeloest == [True]
+
+    preferences.save_agents(
+        [{"name": "Bewerbungen", "link": ""}, {"name": "Verträge", "link": ""}]
+    )
+    view.refresh()
+    assert [knopf.text() for knopf in view.agent_buttons] == [
+        "An Copilot Agent „Bewerbungen“ übergeben",
+        "An Copilot Agent „Verträge“ übergeben",
+    ]
+    assert all(knopf.objectName() == "Agent" for knopf in view.agent_buttons)
+    view.deleteLater()
+    qt_app.processEvents()
+
+
+def test_klick_uebergibt_die_dateien(qt_app, settings_dir, tmp_path, monkeypatch):
+    from pdfblack.ui import compare, preferences
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    geoeffnet: list[dict] = []
+    monkeypatch.setattr(
+        compare.preferences,
+        "open_copilot",
+        lambda entry=None: geoeffnet.append(entry) or True,
+    )
+    monkeypatch.setattr(compare.QDesktopServices, "openUrl", lambda url: True)
+
+    preferences.save_agents([{"name": "Bewerbungen", "link": ""}])
+    view = compare.CompareView()
+    life = _pdf(tmp_path / "bewerbung_mueller.pdf")
+    cert = _pdf(tmp_path / "zeugnis_2024.pdf")
+    mime, event = _drop_event(life)
+    view.life.dropEvent(event)
+    mime, event = _drop_event(cert)
+    view.certs.dropEvent(event)
+
+    meldungen: list[str] = []
+    view.message.connect(meldungen.append)
+    view.agent_buttons[0].click()
+
+    assert geoeffnet and geoeffnet[0]["name"] == "Bewerbungen"
+    ordner = compare.handover_folder("Bewerbungen")
+    assert sorted(pfad.name for pfad in ordner.glob("*.pdf")) == [
+        "Arbeitszeugnis_zeugnis_2024.pdf",
+        "Lebenslauf_bewerbung_mueller.pdf",
+    ]
+    assert "2 Dateien" in meldungen[-1]
+    zwischenablage = QtWidgets.QApplication.clipboard().text()
+    assert "Lebenslauf_bewerbung_mueller.pdf" in zwischenablage
+
+    # Ohne zugeordnete Dateien wird nichts kopiert, sondern nur gemeldet.
+    leer = compare.CompareView()
+    leer.life.clear()
+    leer.certs.clear()
+    hinweise: list[str] = []
+    leer.message.connect(hinweise.append)
+    leer.agent_buttons[0].click()
+    assert "Keine Dateien" in hinweise[-1]
+
+    for widget in (view, leer):
+        widget.deleteLater()
+    qt_app.processEvents()

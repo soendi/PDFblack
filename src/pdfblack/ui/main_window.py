@@ -588,7 +588,14 @@ class MainWindow(QMainWindow):
 
     def _build_compare_view(self) -> QWidget:
         """PDFcompare: zuletzt geschwaerzte Dateien und zwei Stapel."""
-        return CompareView()
+        view = CompareView()
+        view.settingsRequested.connect(self._open_preferences)
+        view.message.connect(self._show_compare_message)
+        return view
+
+    def _show_compare_message(self, text: str) -> None:
+        """Meldung der Übergabe in der Statuszeile anzeigen."""
+        self.statusBar().showMessage(text, 12000)
 
     def _show_program(self, program: str) -> None:
         """Zwischen PDFblack und PDFcompare umschalten."""
@@ -1144,6 +1151,8 @@ class MainWindow(QMainWindow):
     def _open_preferences(self) -> None:
         dialog = PreferencesDialog(self)
         dialog.exec()
+        # Neue Agenten erscheinen sofort als Knöpfe unter den Zeugnissen.
+        self.compare_view.refresh()
 
     def _show_guide(self) -> None:
         QMessageBox.information(

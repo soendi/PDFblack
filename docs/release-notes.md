@@ -1,6 +1,11 @@
-## PDFblack 1.1.2
+## PDFblack 1.1.3
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.1.3
+
+- **Übergabe an Copilot:** Unter der Liste „Arbeitszeugnisse“ steht für jeden hinterlegten Agenten ein blauer Knopf „An Copilot Agent „…“ übergeben“. Ein Klick legt alle zugeordneten Dateien in einem Ordner bereit (`%LOCALAPPDATA%\PDFblack\Copilot-Uebergabe\<Agent>`), öffnet den Ordner und Copilot und kopiert die Dateipfade in die Zwischenablage. Damit Copilot die Rollen erkennt, heißen die Dateien `Lebenslauf_<Name>.pdf` bzw. `Arbeitszeugnis_<Name>.pdf`.
+- **Ohne Agenten:** Ist keiner hinterlegt, steht dort der Knopf „Einstellungen Copilot“, der das Einstellungsfenster öffnet.
 
 ### Neu in 1.1.2
 
@@ -67,13 +72,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.2-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.3-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 35 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 38 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 
