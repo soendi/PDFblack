@@ -1,6 +1,12 @@
-## PDFblack 1.1.4
+## PDFblack 1.2.0
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.2.0
+
+- **Prüfung ohne KI:** Unter den Zeugnissen öffnet „Unterlagen prüfen …" ein Fenster mit allem, was sich ausrechnen lässt: Zeiträume aus dem Lebenslauf, **Lücken ab drei Monaten**, Seiten ohne Textebene (Scans, die PDFblack nicht schwärzen kann), doppelte Dateien, fehlender Lebenslauf oder fehlende Zeugnisse und die Reihenfolge der Zeugnisse. Diese Befunde sind sofort da, offline und ohne Copilot.
+- **Frage an Copilot:** Ein Knopf legt eine fertige Frage samt Antwort-Schema in die Zwischenablage und öffnet Copilot. Die Fakten darin kommen aus dem Prüflauf, nicht aus Vermutungen.
+- **Antwort zurückholen:** Copilot hat für fremde Programme keinen Rückkanal (die Copilot-Chat-API verlangt eine App-Registrierung beim Microsoft-Konto, die hier nicht möglich ist). Deshalb liest PDFcompare die Antwort aus der Zwischenablage: einfügen, „Antwort auswerten", und die Vorschläge erscheinen als Liste – Lücken, Zeugnisse, fehlende Unterlagen, Zusammenfassung. Das JSON wird auch aus Fließtext und Code-Blöcken herausgeschnitten; ohne gültige Antwort bleibt alles beim lokalen Befund.
 
 ### Neu in 1.1.4
 
@@ -80,13 +86,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.4-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.2.0-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 38 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 55 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

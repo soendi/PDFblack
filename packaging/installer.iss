@@ -1,9 +1,9 @@
 ; Inno-Setup-Skript fuer den Windows-Installer von PDFblack.
-; Build: ISCC.exe /DAppVersion=1.1.4 packaging\installer.iss
+; Build: ISCC.exe /DAppVersion=1.2.0 packaging\installer.iss
 ; Erwartet das PyInstaller-Ergebnis in dist\PDFblack (siehe build_windows.ps1).
 
 #ifndef AppVersion
-  #define AppVersion "1.1.4"
+  #define AppVersion "1.2.0"
 #endif
 
 #define AppName "PDFblack"

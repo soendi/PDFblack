@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from . import preferences
 from .panels import _settings
+from .review import ReviewDialog
 
 RECENT_KEY = "compare/recent"
 LIFE_KEY = "compare/lebenslauf"
@@ -475,6 +476,15 @@ class CompareView(QWidget):
         self.agent_buttons: list[QPushButton] = []
         right.addWidget(self.agent_box, 0)
 
+        # Unterlagen pruefen (lokale Befunde) und an Copilot fragen.
+        self.review_button = QPushButton("Unterlagen prüfen …")
+        self.review_button.setObjectName("Review")
+        self.review_button.setToolTip(
+            "Lücken, Scans und Vollständigkeit prüfen; Frage an Copilot kopieren"
+        )
+        self.review_button.clicked.connect(self._open_review)
+        right.addWidget(self.review_button, 0)
+
         layout.addLayout(right, 1)
 
         for liste in (self.recent, self.life, self.certs):
@@ -517,6 +527,11 @@ class CompareView(QWidget):
             )
             self.agent_layout.addWidget(knopf)
             self.agent_buttons.append(knopf)
+
+    def _open_review(self) -> None:
+        """Prüffenster mit lokalen Befunden und der Copilot-Frage öffnen."""
+        dialog = ReviewDialog(self.life.paths(), self.certs.paths(), self)
+        dialog.exec()
 
     def _hand_over(self, entry: dict[str, str]) -> None:
         """Stapel benannt bereitlegen und Copilot mit dem Agenten öffnen."""
