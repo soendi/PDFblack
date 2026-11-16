@@ -204,6 +204,122 @@ def test_drei_buttons_stehen_nebeneinander(window):
     assert header.ocr.subtitle.text().startswith("Liest aus Bildscans")
 
 
+class FakeBox:
+    """Ersatz fuer QMessageBox: merkt sich Text und Knoepfe."""
+
+    Warning = QtWidgets.QMessageBox.Warning
+    AcceptRole = QtWidgets.QMessageBox.AcceptRole
+    RejectRole = QtWidgets.QMessageBox.RejectRole
+    zuletzt = None
+
+    def __init__(self, parent=None) -> None:
+        self.buttons = []
+        self.title = ""
+        self.text_ = ""
+        self.info = ""
+        self._clicked = None
+        FakeBox.zuletzt = self
+
+    def setIcon(self, icon) -> None:
+        pass
+
+    def setWindowTitle(self, title) -> None:
+        self.title = title
+
+    def setText(self, text) -> None:
+        self.text_ = text
+
+    def setInformativeText(self, text) -> None:
+        self.info = text
+
+    def addButton(self, text, role=None):
+        knopf = QtCore.QObject()
+        knopf.text = text
+        knopf.role = role
+        self.buttons.append(knopf)
+        return knopf
+
+    def exec(self) -> int:
+        return 0
+
+    def clickedButton(self):
+        return self._clicked
+
+
+def test_fehlendes_tesseract_wird_angeboten(window, monkeypatch):
+    """Beim Start pruefen und die Nachinstallation anbieten."""
+    from pdfblack.ui import main_window
+
+    monkeypatch.setattr(main_window.ocr_core, "find_tesseract", lambda: None)
+    monkeypatch.setattr(main_window.tesseract_setup, "moeglich", lambda: True)
+    monkeypatch.setattr(main_window, "QMessageBox", FakeBox)
+
+    window._check_tesseract()
+
+    box = FakeBox.zuletzt
+    assert "Tesseract" in box.text_
+    assert [knopf.text for knopf in box.buttons] == ["Jetzt installieren", "Später"]
+    # Ohne Klick wird nichts installiert.
+    assert window._tesseract_worker is None
+
+
+def test_ohne_winget_bleibt_es_beim_hinweis(window, monkeypatch):
+    from pdfblack.ui import main_window
+
+    monkeypatch.setattr(main_window.ocr_core, "find_tesseract", lambda: None)
+    monkeypatch.setattr(main_window.tesseract_setup, "moeglich", lambda: False)
+    monkeypatch.setattr(main_window, "QMessageBox", FakeBox)
+
+    window._check_tesseract()
+
+    box = FakeBox.zuletzt
+    assert [knopf.text for knopf in box.buttons] == ["Später"]
+    assert "winget" in box.info
+
+
+def test_vorhandenes_tesseract_fragt_nicht(window, monkeypatch):
+    from pdfblack.ui import main_window
+
+    FakeBox.zuletzt = None
+    monkeypatch.setattr(main_window.ocr_core, "find_tesseract", lambda: "tesseract")
+    monkeypatch.setattr(main_window, "QMessageBox", FakeBox)
+
+    window._check_tesseract()
+    assert FakeBox.zuletzt is None
+
+
+def test_installation_startet_im_hintergrund(window, monkeypatch):
+    from pdfblack.ui import main_window
+
+    gestartet = []
+
+    class StubWorker(QtCore.QObject):
+        done = QtCore.Signal(object)
+        finished = QtCore.Signal()
+
+        def start(self) -> None:
+            gestartet.append(True)
+
+    class KlickBox(FakeBox):
+        def exec(self) -> int:
+            self._clicked = self.buttons[0]
+            return 0
+
+    monkeypatch.setattr(main_window.ocr_core, "find_tesseract", lambda: None)
+    monkeypatch.setattr(main_window.tesseract_setup, "moeglich", lambda: True)
+    monkeypatch.setattr(main_window, "QMessageBox", KlickBox)
+    monkeypatch.setattr(main_window, "TesseractSetupWorker", StubWorker)
+
+    window._check_tesseract()
+
+    assert gestartet == [True]
+    assert window._tesseract_worker is not None
+    window._tesseract_worker = None
+    if window._tesseract_progress is not None:
+        window._tesseract_progress.close()
+        window._tesseract_progress = None
+
+
 def test_schnelles_hin_und_her_landet_in_der_letzten_wahl(window):
     """Mehrere Klicks waehrend der Animationen: die letzte Wahl gilt."""
     for logo in (

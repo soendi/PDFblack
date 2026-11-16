@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
 
 from .. import APP_NAME, APP_TAGLINE, APP_VERSION
 from ..core import ocr as ocr_core
+from ..core import tesseract_setup
 from ..core.detect import DetectionOptions, run_detection
 from ..core.extract import open_document
 from ..core.models import Category, Finding, PdfPasswordError
@@ -85,12 +86,18 @@ Projekts, nicht einen Empfänger Ihrer Daten. Es gibt keine Serveradresse, an di
 Text geschickt würde, und die Erkennung funktioniert auch ohne
 Internetverbindung.</p>
 
-<p><b>Die einzige Netzwerkverbindung</b> ist die Update-Prüfung. Sie fragt beim
-Start bei GitHub (github.com bzw. api.github.com) nach einer neueren Version.
-Dabei werden nur die IP-Adresse, eine Programm-Kennung und die installierte
-Versionsnummer übertragen – kein Dokumentinhalt und keine Dateinamen.
-Abschalten lässt sich das über <tt>pdfblack --no-update</tt> oder die
-Umgebungsvariable <tt>PDFBLACK_NO_UPDATE=1</tt>.</p>
+<p><b>Netzwerkverbindungen</b> gibt es nur zwei, und beide lösen Sie selbst aus.
+Die eine ist die Update-Prüfung: sie fragt beim Start bei GitHub (github.com
+bzw. api.github.com) nach einer neueren Version. Dabei werden nur die
+IP-Adresse, eine Programm-Kennung und die installierte Versionsnummer
+übertragen – kein Dokumentinhalt und keine Dateinamen. Abschalten lässt sich
+das über <tt>pdfblack --no-update</tt> oder die Umgebungsvariable
+<tt>PDFBLACK_NO_UPDATE=1</tt>.</p>
+
+<p>Die andere ist die Nachinstallation von Tesseract-OCR: fehlt das Programm,
+bietet PDFblack beim Start an, es über winget einzurichten. Erst wenn Sie
+zustimmen, ruft PDFblack winget auf, und Windows lädt das Paket von
+UB Mannheim (Apache-2.0). Lehnen Sie ab, passiert nichts.</p>
 
 <h3>Was das datenschutzrechtlich bedeutet</h3>
 <ul>
@@ -481,6 +488,15 @@ class AppHeader(QWidget):
         self._place(animate=False)
 
 
+class TesseractSetupWorker(QThread):
+    """Installiert Tesseract-OCR im Hintergrund (winget)."""
+
+    done = Signal(object)
+
+    def run(self) -> None:  # pragma: no cover - laeuft im Thread
+        self.done.emit(tesseract_setup.installieren())
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -500,6 +516,8 @@ class MainWindow(QMainWindow):
         self._update_download: UpdateDownloadWorker | None = None
         self._update_progress: QProgressDialog | None = None
         self._update_silent = False
+        self._tesseract_worker: TesseractSetupWorker | None = None
+        self._tesseract_progress: QProgressDialog | None = None
         self._update_version = ""
         self._program = "pdfblack"
         self._fades: list[QPropertyAnimation] = []
@@ -1292,6 +1310,73 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Updates
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Tesseract-OCR
+    # ------------------------------------------------------------------
+
+    def start_tesseract_check(self) -> None:
+        """Beim Start sehen, ob Tesseract-OCR vorhanden ist."""
+        QTimer.singleShot(1500, self._check_tesseract)
+
+    def _check_tesseract(self) -> None:
+        if ocr_core.find_tesseract() is not None or self._tesseract_worker is not None:
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Tesseract-OCR fehlt")
+        box.setText("PDFocr kann ohne Tesseract-OCR keine Bildscans auslesen.")
+        install = None
+        if tesseract_setup.moeglich():
+            box.setInformativeText(
+                "Tesseract-OCR ist ein freies Programm für die Texterkennung. "
+                "PDFblack kann es jetzt über winget nachinstallieren – Windows "
+                "fragt dabei nach der Freigabe."
+            )
+            install = box.addButton("Jetzt installieren", QMessageBox.AcceptRole)
+        else:
+            box.setInformativeText(
+                "Automatisch nachinstallieren geht nur unter Windows mit "
+                "winget. Bitte Tesseract-OCR von Hand installieren: "
+                f"{tesseract_setup.SEITE}"
+            )
+        box.addButton("Später", QMessageBox.RejectRole)
+        box.exec()
+        if install is not None and box.clickedButton() is install:
+            self._install_tesseract()
+
+    def _install_tesseract(self) -> None:
+        if self._tesseract_worker is not None:
+            return
+        self._tesseract_progress = QProgressDialog(
+            "Tesseract-OCR wird installiert …", "", 0, 0, self
+        )
+        self._tesseract_progress.setWindowTitle("Tesseract-OCR")
+        self._tesseract_progress.setWindowModality(Qt.WindowModal)
+        self._tesseract_progress.setMinimumDuration(0)
+        self._tesseract_progress.setCancelButton(None)
+        self._tesseract_progress.show()
+        worker = TesseractSetupWorker()
+        worker.done.connect(self._on_tesseract_installed)
+        worker.finished.connect(worker.deleteLater)
+        self._tesseract_worker = worker
+        worker.start()
+
+    def _on_tesseract_installed(self, result) -> None:
+        self._tesseract_worker = None
+        if self._tesseract_progress is not None:
+            self._tesseract_progress.close()
+            self._tesseract_progress = None
+        self.ocr_view.check_engine()
+        if result.ok:
+            QMessageBox.information(
+                self,
+                "Tesseract-OCR",
+                f"{result.message}\n\nPDFocr kann Bildscans jetzt auslesen.",
+            )
+            self.statusBar().showMessage("Tesseract-OCR ist bereit.", 8000)
+        else:
+            QMessageBox.warning(self, "Tesseract-OCR", result.message)
 
     def start_auto_update(self) -> None:
         """Beim Start still nach einer neueren Version sehen."""

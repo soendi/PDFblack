@@ -142,6 +142,10 @@ def main(argv: list[str] | None = None) -> int:
     if "--no-update" not in argv and os.environ.get("PDFBLACK_NO_UPDATE") != "1":
         window.start_auto_update()
 
+    # Fehlt Tesseract-OCR, bietet PDFblack die Nachinstallation an.
+    if os.environ.get("PDFBLACK_NO_OCR_CHECK") != "1":
+        window.start_tesseract_check()
+
     return app.exec()
 
 

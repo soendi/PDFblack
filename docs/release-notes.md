@@ -1,6 +1,12 @@
-## PDFblack 1.3.0
+## PDFblack 1.3.1
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.1
+
+- **Tesseract wird beim Start geprüft:** Fehlt Tesseract-OCR, meldet PDFblack das beim Öffnen und bietet an, es nachzuinstallieren. Auf Wunsch richtet `winget` das Windows-Build `UB-Mannheim.TesseractOCR` still ein (Windows fragt nach der Freigabe); danach ist PDFocr sofort bereit und der Hinweis auf der PDFocr-Seite verschwindet. Ohne winget oder ausserhalb von Windows bleibt es beim Hinweis mit der Adresse der Tesseract-Seite. Abschaltbar über `PDFBLACK_NO_OCR_CHECK=1`.
+- **Nur echte Ortschaften gelten als Ort:** Meldet das Sprachmodell ein Wort als Ort, muss es in der amtlichen Ortschaftenliste stehen. Überschriften wie „Fachmessen“ oder „Dachdeckermeister“ erscheinen damit nicht mehr unter „PLZ / Ort“; Ortsnamen wie „Heerbrugg“ oder „Sion“ bleiben. Treffer mit Zahlen (PLZ, Hausnummer) prüfen weiterhin die Regeln.
+- **Beruf mit Zusatz ist auch ein Beruf:** „Dachdeckermeister“, „Dachdeckermeisterin“, „Dachdeckergeselle“, „Dachdeckerlehrling“ oder „Maurermeister“ zählen wie „Dachdecker“ als Berufsbezeichnung und werden nicht geschwärzt. Ein Name mit solchem Zusatz („Mustermeister“) bleibt ein Name.
 
 ### Neu in 1.3.0
 
@@ -107,13 +113,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.0-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.1-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 90 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 99 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

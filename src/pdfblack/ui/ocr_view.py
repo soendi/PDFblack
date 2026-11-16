@@ -278,20 +278,26 @@ class OcrView(QWidget):
     def engine(self) -> TesseractEngine:
         return make_engine(SPRACHEN.get(self.language.currentText(), "deu"))
 
+    def check_engine(self, engine: TesseractEngine | None = None) -> bool:
+        """Ist die Erkennung einsatzbereit? Zeigt sonst den Hinweis an."""
+        if (engine or self.engine()).available():
+            self.engine_hint.hide()
+            return True
+        self.engine_hint.setText(
+            "Tesseract wurde nicht gefunden. Bitte Tesseract-OCR installieren "
+            "(Windows: tesseract-ocr, z. B. unter "
+            "„C:\\Program Files\\Tesseract-OCR“) oder den Pfad in der "
+            "Umgebungsvariablen PDFBLACK_TESSERACT setzen."
+        )
+        self.engine_hint.show()
+        return False
+
     def start(self) -> None:
         if not self._path or self._worker is not None:
             return
         engine = self.engine()
-        if not engine.available():
-            self.engine_hint.setText(
-                "Tesseract wurde nicht gefunden. Bitte Tesseract-OCR installieren "
-                "(Windows: tesseract-ocr, z. B. unter "
-                "„C:\\Program Files\\Tesseract-OCR“) oder den Pfad in der "
-                "Umgebungsvariablen PDFBLACK_TESSERACT setzen."
-            )
-            self.engine_hint.show()
+        if not self.check_engine(engine):
             return
-        self.engine_hint.hide()
         if self._temp_dir is None:
             self._temp_dir = tempfile.mkdtemp(prefix="pdfblack-ocr-")
         ziel = str(Path(self._temp_dir) / f"{Path(self._path).stem}_ocr.pdf")

@@ -50,6 +50,25 @@ def test_bekannte_berufe_und_ihre_weibliche_form():
     assert not berufe.ist_beruf("Muster AG")
 
 
+def test_meister_und_verwandte_sind_auch_berufe():
+    """Aus "Dachdecker" wird mit Zusatz "Dachdeckermeister" - auch das ist ein Beruf."""
+    for titel in (
+        "Dachdeckermeister",
+        "Dachdeckermeisterin",
+        "dachdeckermeisterin",
+        "Dachdeckermeister (m/w/d)",
+        "Dachdeckergeselle",
+        "Dachdeckerlehrling",
+        "Maurermeister",
+    ):
+        assert berufe.ist_beruf(titel), titel
+    assert name_tokens("Dachdeckermeister") == set()
+    assert name_tokens("Dachdeckermeisterin") == set()
+    # Ein Name mit Zusatz bleibt ein Name.
+    assert not berufe.ist_beruf("Mustermeister")
+    assert name_tokens("Mustermeister") == {"Mustermeister"}
+
+
 def test_beruf_ist_kein_namensbestandteil():
     assert name_tokens("Dachdecker") == set()
     assert name_tokens("Vorarbeiterin") == set()
@@ -98,6 +117,8 @@ def test_berufsbezeichnung_wird_nicht_erkannt(tmp_path):
         "Vorarbeiterin von 10 Dachdecker",
         "Als Dachdeckerin auf Grossbaustellen tätig.",
         "Beruf: Dachdecker",
+        "Beruf: Dachdeckermeisterin",
+        "Als Dachdeckermeister auf Grossbaustellen tätig.",
     ]
     for index, zeile in enumerate(zeilen):
         page.insert_text((60, 100 + index * 22), zeile, fontsize=11, fontname="helv")

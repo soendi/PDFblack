@@ -51,7 +51,10 @@ def anzahl() -> int:
 
 def ist_beruf(text: str) -> bool:
     """Ist dieser Text (nur) eine Berufsbezeichnung?"""
-    return normalisiere(text) in _berufe()
+    klein = normalisiere(text)
+    if klein in _berufe():
+        return True
+    return " " not in klein and _aus_beruf(klein)
 
 
 # Woerter, die Beruf und haeufiger Nachname zugleich sind ("Herr Mueller",
@@ -69,6 +72,34 @@ _AUCH_NACHNAME = frozenset(
 )
 
 
+# Zusaetze, die aus einem Beruf eine Steigerung machen: "Dachdecker" ->
+# "Dachdeckermeister", "Dachdeckerin" -> "Dachdeckermeisterin". Laengere
+# Zusaetze stehen vorn, damit "Dachdeckergeselle" nicht an "gesell" haengen
+# bleibt.
+_ZUSATZ = (
+    "meisterin",
+    "meister",
+    "gesellin",
+    "geselle",
+    "helferin",
+    "helfer",
+    "fachfrau",
+    "fachmann",
+    "lehrling",
+)
+
+
+def _aus_beruf(klein: str) -> bool:
+    """Beruf mit Zusatz, z. B. "dachdeckermeisterin"?"""
+    for zusatz in _ZUSATZ:
+        if not klein.endswith(zusatz):
+            continue
+        stamm = klein[: -len(zusatz)]
+        if len(stamm) >= 4 and stamm in _einzelwoerter():
+            return True
+    return False
+
+
 def ist_berufswort(wort: str) -> bool:
     """Ist dieses einzelne Wort eine Berufsbezeichnung?
 
@@ -78,7 +109,9 @@ def ist_berufswort(wort: str) -> bool:
     klein = normalisiere(wort)
     if klein in _AUCH_NACHNAME:
         return False
-    return klein in _einzelwoerter()
+    if klein in _einzelwoerter():
+        return True
+    return _aus_beruf(klein)
 
 
 def quellen() -> list[str]:

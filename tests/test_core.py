@@ -402,6 +402,49 @@ def test_datum_oben_rechts_ist_kein_plz_ort(tmp_path, monkeypatch):
     assert not [f for f in result.findings if f.category is Category.POSTAL], found
 
 
+def test_unbekanntes_wort_ist_keine_ortschaft(tmp_path, monkeypatch):
+    """Ein als Ort gemeldetes Wort muss in der Ortschaftenliste stehen.
+
+    "Fachmessen" ist eine Ueberschrift in einem Lebenslauf; das Sprachmodell
+    labelt sie trotzdem als Ort. Nur Namen aus der amtlichen Liste gelten als
+    PLZ / Ort.
+    """
+    source = tmp_path / "orte.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((60, 100), "Fachmessen", fontsize=11, fontname="helv")
+    page.insert_text((60, 130), "Heerbrugg", fontsize=11, fontname="helv")
+    doc.save(str(source))
+    doc.close()
+
+    class FakeAnalyzer:
+        """Meldet beide Woerter als Ort, so wie es spaCy tut."""
+
+        def analyze(self, text, **kwargs):
+            cleaned = text.strip()
+            if cleaned not in {"Fachmessen", "Heerbrugg"}:
+                return []
+            start = text.index(cleaned)
+            return [
+                SimpleNamespace(
+                    entity_type="LOCATION",
+                    start=start,
+                    end=start + len(cleaned),
+                    score=0.85,
+                )
+            ]
+
+    monkeypatch.setattr("pdfblack.core.detect.get_analyzer", lambda: (FakeAnalyzer(), None))
+
+    result = run_detection(
+        str(source),
+        DetectionOptions(use_ai=True, ai_entities=("LOCATION",), rule_groups=()),
+    )
+    found = texts(result.findings)
+    assert "Heerbrugg" in found
+    assert "Fachmessen" not in found
+
+
 def test_jahreszahlen_sind_keine_postleitzahlen(tmp_path):
     """Vierstellige Jahreszahlen gehoeren nicht zu PLZ / Ort."""
     path = tmp_path / "jahre.pdf"

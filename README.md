@@ -1,4 +1,4 @@
-# PDFblack 1.3.0
+# PDFblack 1.3.1
 
 Vertrauliche Daten in PDF-Dateien automatisch schwärzen – mit Vorschau, Prüfung
 und echter Entfernung des Textes.
@@ -26,7 +26,7 @@ und echter Entfernung des Textes.
 | Muster (deutsche Regeln) | Straße + Hausnummer, PLZ + Ort, Personalnummer, Ausweis-, Versicherten-, Kunden-, Vertrags-, Aktenzeichen u. a. |
 | Muster (Schweizer Regeln) | vierstellige PLZ samt Ort, geprüft gegen die amtliche Liste aller Schweizer PLZ: `CH-8045`, `CH 3000`, `8045 Zürich`, `CH-1814 La Tour-de-Peilz` |
 | Kontakt/Bank | E-Mail, Telefon (auch `+41 …`), IBAN |
-| Berufe | rund 11 500 Berufsbezeichnungen in männlicher und weiblicher Form – sie werden nicht geschwärzt („Dachdecker“, „Vorarbeiterin“) |
+| Berufe | rund 11 500 Berufsbezeichnungen in männlicher und weiblicher Form, samt Steigerungen wie „Dachdeckermeister“, „Dachdeckermeisterin“ – sie werden nicht geschwärzt („Dachdecker“, „Vorarbeiterin“) |
 | Firmen | Name unter einer allein stehenden Jahreszahl (`2026` / `Muster AG`) – Kategorie „Firma“ |
 | Zweiter Durchlauf | alle Werte aus den Eingabefeldern (Vorname, Nachname, Adresse, PLZ, Ort, Personennummer, weitere Begriffe) |
 | Eigene Regexe | beliebige reguläre Ausdrücke, ein Ausdruck pro Zeile |
@@ -53,6 +53,12 @@ und keine Mengenangabe ist; Füllwörter wie „und“, „bis“ oder „Person
 machen eine Zahl nicht zur PLZ. Die Liste wird monatlich von swisstopo
 nachgeführt und mit `python tools/build_plz_data.py` neu erzeugt. Abschalten
 lässt sich das über „Automatische Erkennung → Schweizer PLZ“.
+
+Dieselbe Liste entscheidet auch bei der **KI-Erkennung**, was ein Ort ist:
+meldet das Sprachmodell ein Wort als Ort, muss der Name in der
+Ortschaftenliste stehen. „Fachmessen“ oder „Dachdeckermeister“ sind keine
+Ortsnamen und erscheinen deshalb nicht mehr unter „PLZ / Ort“. Treffer mit
+Zahlen (PLZ, Hausnummer) prüfen weiterhin die Regeln.
 
 **PLZ und Ort stehen in einer Zeile.** Steht eine vierstellige Zahl allein und
 der Name erst in der Zeile darunter (`2026` / `Muster AG`, `9435` /
@@ -124,16 +130,24 @@ neue Datei liegt bis zum Speichern in einem temporären Ordner.
 
 [Tesseract-OCR](https://github.com/tesseract-ocr/tesseract) muss installiert
 sein (Windows: `tesseract-ocr`, üblicher Pfad `C:\Program Files\Tesseract-OCR`,
-wird automatisch gefunden). Wird es nicht gefunden, sagt PDFocr das und nennt
-den Weg über die Umgebungsvariable `PDFBLACK_TESSERACT`. Das Wörterbuch ist
-teil des Programms.
+wird automatisch gefunden). **PDFblack prüft das beim Start** und bietet an,
+Tesseract nachzuinstallieren, wenn es fehlt: über `winget` richtet es dann das
+Windows-Build `UB-Mannheim.TesseractOCR` still ein (Windows fragt nach der
+Freigabe); auf anderen Systemen erscheint nur der Hinweis samt Adresse
+<https://github.com/UB-Mannheim/tesseract/wiki>. Abschalten lässt sich die
+Prüfung über die Umgebungsvariable `PDFBLACK_NO_OCR_CHECK=1`; einen anderen
+Pfad nennt `PDFBLACK_TESSERACT` (direkt auf `tesseract.exe`). Das Wörterbuch
+ist Teil des Programms.
 
 **Berufsbezeichnungen** stehen in einer eigenen Liste
 (`src/pdfblack/data/berufe.json`, rund 11 500 Einträge in männlicher und
 weiblicher Form, Quelle Wikidata (CC0) plus gängige Berufe). Sie gelten weder
 als Name noch als Adresse: „Vorarbeiterin von 10 Dachdecker“ ergibt keinen
 Treffer, und eine erkannte Person wird nur über ihre Namensbestandteile im
-Dokument gesucht, nicht über den Beruf. Nachnamen, die zugleich Berufe sind
+Dokument gesucht, nicht über den Beruf. Zusammensetzungen aus Beruf und
+Zusatz gelten ebenfalls als Beruf – „Dachdeckermeister“, „Dachdeckermeisterin“,
+„Dachdeckergeselle“, „Dachdeckerlehrling“, „Maurermeister“ –, ein Name mit
+solchem Zusatz („Mustermeister“) aber nicht. Nachnamen, die zugleich Berufe sind
 („Herr Müller“, „Frau Koch“), zählen weiter als Namen. Neu bauen:
 `python tools/build_berufe_data.py`.
 
@@ -244,7 +258,7 @@ Alle Varianten setzen eine virtuelle Umgebung mit den Abhängigkeiten voraus.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-# Ergebnis: dist\PDFblack-1.3.0-Setup.exe  (benötigt Inno Setup 6)
+# Ergebnis: dist\PDFblack-1.3.1-Setup.exe  (benötigt Inno Setup 6)
 ```
 
 **macOS (.app + ZIP)**

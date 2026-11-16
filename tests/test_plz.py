@@ -17,6 +17,14 @@ def test_liste_ist_vorhanden():
     assert any("swisstopo" in quelle for quelle in plz.quellen())
 
 
+def test_ist_ort_prueft_gegen_die_liste():
+    """Was nicht in der Ortschaftenliste steht, ist keine Ortschaft."""
+    for name in ("Heerbrugg", "Zürich", "zuerich", "Bern", "Sion", "Neuchâtel"):
+        assert plz.ist_ort(name), name
+    for name in ("Fachmessen", "Mustermann", "Dachdeckermeister", "Musterweg"):
+        assert not plz.ist_ort(name), name
+
+
 def test_bekannte_postleitzahlen():
     for code in ("1000", "1950", "2000", "3000", "8000", "8045", "9435", "9490"):
         assert plz.is_postal_code(code), code

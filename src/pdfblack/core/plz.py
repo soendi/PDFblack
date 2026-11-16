@@ -86,6 +86,37 @@ def orte(plz: str) -> tuple[str, ...]:
     return _codes().get(str(plz).strip(), ())
 
 
+@lru_cache(maxsize=1)
+def _alle_namen() -> tuple[str, ...]:
+    """Alle Ortschaftsnamen der Liste in Vergleichsschreibweise."""
+    namen: set[str] = set()
+    for eintraege in _codes().values():
+        namen.update(eintraege)
+    return tuple(sorted(namen))
+
+
+def ist_ort(text: str) -> bool:
+    """Steht dieser Name ueberhaupt in der Ortschaftenliste?
+
+    Die Liste ist die amtliche: was nicht darin steht ("Fachmessen"), ist
+    keine Ortschaft. Verglichen wird wie bei :func:`is_place` - ohne Akzente,
+    mit und ohne Umlaut-Umschrift und mit Praefix-Toleranz ("Bern 60 UPD").
+    """
+    namen = _alle_namen()
+    kandidaten = _kandidaten(text)
+    if not namen or not kandidaten:
+        return False
+    if any(kandidat in namen for kandidat in kandidaten):
+        return True
+    for kandidat in kandidaten:
+        for name in namen:
+            if len(kandidat) >= 4 and name.startswith(kandidat):
+                return True
+            if len(name) >= 4 and kandidat.startswith(name):
+                return True
+    return False
+
+
 def quellen() -> list[str]:
     """Herkunft und Lizenz der Liste (fuer den Ueber-Dialog)."""
     try:

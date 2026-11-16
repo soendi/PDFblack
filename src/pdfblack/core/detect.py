@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import berufe
+from . import berufe, plz
 from .extract import TextMap, open_document
 from .models import Category, Finding
 from .rules import Rule, compiled as compiled_rule, rules_for_groups
@@ -408,6 +408,22 @@ def _ai_location_is_date(entity_text: str) -> bool:
     return False
 
 
+_AI_HAS_DIGIT = re.compile(r"\d")
+
+
+def _ai_location_is_place(entity_text: str) -> bool:
+    """Ist der als Ort gemeldete Text wirklich eine Ortschaft?
+
+    Das Sprachmodell labelt auch Woerter als Ort, die keine sind
+    ("Fachmessen" in einem Lebenslauf). Entscheidend ist die amtliche
+    Ortschaftenliste: steht der Name dort nicht, ist es kein Ort. Treffer mit
+    Zahlen (PLZ, Hausnummer) bleiben den Regeln ueberlassen.
+    """
+    if _AI_HAS_DIGIT.search(entity_text):
+        return True
+    return plz.ist_ort(entity_text)
+
+
 def looks_like_street(token: str) -> bool:
     lowered = token.lower()
     return any(lowered.endswith(ending) for ending in _STREET_ENDINGS)
@@ -600,6 +616,9 @@ def run_detection(
                             continue
                         if category is Category.POSTAL and _ai_location_is_date(entity_text):
                             # Datum statt Ort: die Datumsregel erfasst es.
+                            continue
+                        if category is Category.POSTAL and not _ai_location_is_place(entity_text):
+                            # Kein Ort aus der Ortschaftenliste ("Fachmessen").
                             continue
                         if category is Category.PERSON:
                             name_pool |= name_tokens(entity_text)
