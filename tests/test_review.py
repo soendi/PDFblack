@@ -193,5 +193,11 @@ def test_fenster_zeigt_befunde_und_wertet_die_antwort_aus(qt_app, tmp_path, monk
     dialog.ask_button.click()
     kopiert = QtWidgets.QApplication.clipboard().text()
     assert "ausschließlich" in kopiert
+
+    # Der Prompt steht im Fenster und laesst sich vor dem Absenden aendern.
+    assert "ausschließlich" in dialog.question.toPlainText()
+    dialog.question.setPlainText("Bitte nur das JSON liefern.")
+    dialog.ask_button.click()
+    assert QtWidgets.QApplication.clipboard().text() == "Bitte nur das JSON liefern."
     dialog.deleteLater()
     qt_app.processEvents()

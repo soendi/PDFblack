@@ -200,6 +200,8 @@ def test_drei_buttons_stehen_nebeneinander(window):
     QtTest.QTest.qWait(100)
     assert header.black.x() == header.MARGIN
     assert header.ocr.x() > header.compare.x()
+    # Direkt hinter dem blauen Logo - genau dort, wo sein Text anfaengt.
+    assert header.ocr.x() == header.compare_rest_x() + header.LOGO_SIZE + header.GAP
     assert header.ocr.x() + header.LOGO_SIZE <= header.width()
     assert header.ocr.title.text() == "PDFocr"
     assert header.ocr.subtitle.text().startswith("Liest aus Bildscans")

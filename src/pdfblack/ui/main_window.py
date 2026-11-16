@@ -286,11 +286,11 @@ class _BrandBlock(QWidget):
 class AppHeader(QWidget):
     """Kopfzeile mit drei Programmen.
 
-    PDFblack steht links, PDFcompare ab der Fenstermitte, PDFocr rechts neben
-    seinem Logo. Wird ein Programm gewaehlt, faehrt dessen Logo genau dorthin,
-    wo Titel und Untertitel von PDFblack beginnen; die beiden anderen Bloecke
-    stehen an ihrem Platz. Der Text des blauen Buttons beginnt also dort, wo
-    beim Wechsel das Logo des gewaehlten Programms landet.
+    PDFblack steht links, PDFcompare ab der Fenstermitte, PDFocr direkt hinter
+    dem Logo von PDFcompare - genau dort, wo dessen Text anfaengt (der ist in
+    dieser Stellung ausgeblendet). Wird ein Programm gewaehlt, faehrt dessen
+    Logo an den Anfang des PDFblack-Textes; PDFocr rueckt dann hinter den
+    blauen Block, wie er gerade steht.
 
     Sichtbar ist immer nur der Text des aktiven Programms.
     """
@@ -302,8 +302,6 @@ class AppHeader(QWidget):
     GAP = 11
     SLIDE_MS = 320
     TEXT_MS = 220
-    # Abstand zwischen blauem und gruenem Button in Ruhestellung.
-    LOGO_GAP = 28
 
     def __init__(self) -> None:
         super().__init__()
@@ -399,9 +397,8 @@ class AppHeader(QWidget):
         )
         return max(left_limit, min(half, right_limit))
 
-    def ocr_rest_x(self) -> int:
-        """Ruheposition von PDFocr: rechts neben dem Logo von PDFcompare."""
-        rechts = self.compare_rest_x() + self.LOGO_SIZE + self.GAP + self.LOGO_GAP
+    def _bis_zur_version(self, x: int) -> int:
+        """x so begrenzen, dass das Logo die Versionsnummer nicht ueberdeckt."""
         limit = (
             self.width()
             - self.MARGIN
@@ -409,9 +406,16 @@ class AppHeader(QWidget):
             - 12
             - self.LOGO_SIZE
         )
-        return max(
-            self.compare_rest_x() + self.LOGO_SIZE + self.GAP,
-            min(rechts, limit),
+        return max(self.title_x(), min(x, limit))
+
+    def ocr_rest_x(self) -> int:
+        """Ruheposition von PDFocr: direkt hinter dem Logo von PDFcompare.
+
+        Das ist genau die Stelle, an der der Text des blauen Buttons anfaengt -
+        in dieser Stellung ist er ausgeblendet, das gruene Logo steht also frei.
+        """
+        return self._bis_zur_version(
+            self.compare_rest_x() + self.LOGO_SIZE + self.GAP
         )
 
     def block_x(self, name: str, program: str) -> int:
@@ -422,8 +426,15 @@ class AppHeader(QWidget):
             # Beim Vergleich faehrt der blaue Button an den Anfang des
             # PDFblack-Textes, sonst steht er an seinem Platz.
             return self.title_x() if program == "pdfcompare" else self.compare_rest_x()
-        # PDFocr steht genau dort, wo der Text des blauen Buttons anfaengt.
-        return self.title_x() if program == "pdfocr" else self.ocr_rest_x()
+        if program == "pdfocr":
+            # Genau dort, wo der Text des blauen Buttons anfaengt.
+            return self.title_x()
+        if program == "pdfcompare":
+            # Direkt hinter dem blauen Button, der nach links gefahren ist.
+            return self._bis_zur_version(
+                self.title_x() + self.compare.sizeHint().width() + self.GAP
+            )
+        return self.ocr_rest_x()
 
     def _place(self, animate: bool, program: str | None = None) -> None:
         if not hasattr(self, "_slides"):

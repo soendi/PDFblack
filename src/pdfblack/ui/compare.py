@@ -41,11 +41,9 @@ CERT_PREFIX = "Arbeitszeugnis"
 APPLICATION_PREFIX = "Bewerbung"
 DIPLOMA_PREFIX = "Diplom"
 
-HANDOVER_PROMPT = (
-    "Hier sind die Unterlagen zur Bewerbung: Lebenslauf, Arbeitszeugnisse, "
-    "Bewerbungsschreiben und Diplome. Bitte lies die Unterlagen und fasse sie "
-    "zusammen."
-)
+# Vorgabe; der Text ist unter Einstellungen → „Text an Copilot bei der
+# Übergabe“ änderbar (preferences.handover_prompt()).
+HANDOVER_PROMPT = preferences.HANDOVER_PROMPT
 
 
 def handover_base() -> Path:
@@ -617,7 +615,7 @@ class CompareView(QWidget):
                 anhang = gebuendelt
 
         geoeffnet = preferences.open_copilot(
-            entry, prompt=HANDOVER_PROMPT, file=str(anhang)
+            entry, prompt=preferences.handover_prompt(), file=str(anhang)
         )
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
         if geoeffnet:

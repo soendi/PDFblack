@@ -597,3 +597,26 @@ def test_uebergabe_beschriftet_auch_bewerbung_und_diplome(tmp_path):
         "Bewerbung_anschreiben.pdf",
         "Diplom_diplom_informatik.pdf",
     ]
+
+
+def test_uebergabe_text_ist_einstellbar(qt_app, settings_dir, monkeypatch):
+    """Der Text an Copilot steht neben der Agentenliste und gilt bei der Uebergabe."""
+    from pdfblack.ui import compare, preferences
+
+    preferences._settings().setValue(preferences.PROMPT_KEY, "")
+
+    dialog = preferences.PreferencesDialog()
+    assert dialog.prompt.toPlainText() == preferences.HANDOVER_PROMPT
+    dialog.prompt.setPlainText("Bitte prüfe diese Unterlagen.")
+    dialog.accept()
+    assert preferences.handover_prompt() == "Bitte prüfe diese Unterlagen."
+
+    wieder = preferences.PreferencesDialog()
+    assert wieder.prompt.toPlainText() == "Bitte prüfe diese Unterlagen."
+    # Leer heisst: die Vorgabe gilt wieder.
+    wieder.prompt.setPlainText("   ")
+    wieder.accept()
+    assert preferences.handover_prompt() == compare.HANDOVER_PROMPT
+
+    for widget in (dialog, wieder):
+        widget.deleteLater()

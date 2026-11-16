@@ -172,3 +172,36 @@ def test_ocr_layer_laesst_sich_schwaerzen(tmp_path):
     proben = pix.samples
     assert proben
     assert max(proben) < 40, "im Bereich steht noch das Bild (helle Scan-Pixel)"
+
+
+def test_tesseract_bekommt_tsv_als_option(tmp_path, monkeypatch):
+    """Kein "tsv"-Argument: der mitgelieferte Sprachordner hat keine configs/.
+
+    Tesseract liest ein abschliessendes "tsv" als Konfigurationsdatei aus dem
+    tessdata-Ordner und bricht sonst mit "read_params_file: Can't open tsv" ab.
+    """
+    from pdfblack.core import ocr
+
+    programm = tmp_path / "tesseract"
+    programm.write_text("", encoding="utf-8")
+    aufrufe: list[list[str]] = []
+
+    class Ergebnis:
+        returncode = 0
+        stderr = b""
+
+    def fake_run(befehl, **kwargs):
+        aufrufe.append(befehl)
+        Path(befehl[2]).with_suffix(".tsv").write_text(
+            "level\tpage_num\n5\t1\n", encoding="utf-8"
+        )
+        return Ergebnis()
+
+    monkeypatch.setattr(ocr.subprocess, "run", fake_run)
+    engine = ocr.TesseractEngine(language="deu", path=str(programm))
+    assert engine.read_words(b"png", (10, 10)) == []
+
+    befehl = aufrufe[0]
+    assert "tsv" not in befehl
+    assert befehl[befehl.index("-c") + 1] == "tessedit_create_tsv=1"
+    assert befehl[befehl.index("--tessdata-dir") + 1] == str(ocr.TESSDATA)

@@ -1,3 +1,14 @@
+## PDFblack 1.3.3
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.3
+
+- **PDFocr funktioniert wieder:** Tesseract las das abschließende `tsv` als Konfigurationsdatei aus dem Sprachordner – und der mitgelieferte Ordner enthält nur `deu.traineddata`, deshalb kam „read_params_file: Can't open tsv“ und die Erkennung brach mit „Tesseract hat keine Ausgabe geliefert“ ab. Die TSV-Ausgabe wird jetzt als Option übergeben (`-c tessedit_create_tsv=1`); dafür braucht es keine zusätzlichen Dateien.
+- **Frage an Copilot ist sichtbar und änderbar:** Im Prüffenster („Unterlagen prüfen …“) steht die Frage samt Antwort-Schema in einem eigenen Feld. Kopiert und an Copilot geschickt wird, was dort steht – leeren und neu formulieren ist ausdrücklich erlaubt.
+- **Text der Übergabe einstellbar:** Unter **Datei → Einstellungen …** lässt sich neben der Agentenliste der Text ändern, der beim Klick auf einen Agenten-Knopf mit der gebündelten Datei an Copilot geht. Vorgabe ist der bisherige Text; ein leeres Feld stellt die Vorgabe wieder her.
+- **Grüner Knopf direkt hinter dem blauen:** Der PDFocr-Knopf steht in Ruhestellung unmittelbar hinter dem Logo von PDFcompare – genau dort, wo dessen Text beginnt – und wandert mit, wenn PDFcompare nach links fährt. Die bisherige Extra-Lücke ist weg.
+
 ## PDFblack 1.3.2
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -123,13 +134,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.2-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.3-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 101 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, mitgelieferte Tesseract-Sprachdatei, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 103 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

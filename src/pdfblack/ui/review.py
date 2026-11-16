@@ -29,7 +29,7 @@ class ReviewDialog(QDialog):
     def __init__(self, life: list[str], certs: list[str], parent: QWidget | None = None):
         super().__init__(parent)
         self.setWindowTitle("Prüfung")
-        self.resize(760, 680)
+        self.resize(800, 860)
 
         self.life = list(life)
         self.certs = list(certs)
@@ -56,11 +56,21 @@ class ReviewDialog(QDialog):
         hinweis = QLabel(
             "Die Befunde oben sind ausgerechnet, ohne KI. Copilot sieht die "
             "Dateien nicht von selbst: Frage kopieren, in Copilot einsetzen, "
-            "Antwort zurückkopieren."
+            "Antwort zurückkopieren. Die Frage darunter lässt sich vorher "
+            "ändern – kopiert wird, was dort steht."
         )
         hinweis.setObjectName("Hint")
         hinweis.setWordWrap(True)
         layout.addWidget(hinweis)
+
+        frage_titel = QLabel("Frage an Copilot (änderbar)")
+        frage_titel.setObjectName("SectionLabel")
+        layout.addWidget(frage_titel)
+
+        self.question = QPlainTextEdit(self.prompt())
+        self.question.setPlaceholderText("Frage an Copilot …")
+        self.question.setMinimumHeight(150)
+        layout.addWidget(self.question, 1)
 
         fragen = QHBoxLayout()
         fragen.setSpacing(8)
@@ -110,7 +120,12 @@ class ReviewDialog(QDialog):
         return review_core.build_prompt(self.report, self.life, self.certs)
 
     def _ask(self) -> None:
-        frage = self.prompt()
+        frage = self.question.toPlainText().strip()
+        if not frage:
+            self.findings.appendPlainText(
+                "→ Die Frage ist leer – bitte zuerst einen Text eingeben."
+            )
+            return
         QApplication.clipboard().setText(frage)
         geoeffnet = preferences.open_copilot(prompt=frage)
         if geoeffnet:

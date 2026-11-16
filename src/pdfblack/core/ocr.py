@@ -174,7 +174,12 @@ class TesseractEngine:
                 self.language,
                 "--psm",
                 "3",
-                "tsv",
+                # TSV als Option statt als Konfigurationsdatei "tsv": Tesseract
+                # sucht Konfigurationsdateien im tessdata-Ordner, und der
+                # mitgelieferte enthält nur die Sprachdatei (sonst meldet
+                # Tesseract "read_params_file: Can't open tsv").
+                "-c",
+                "tessedit_create_tsv=1",
             ]
             try:
                 ergebnis = subprocess.run(  # noqa: S603 - fester Aufruf

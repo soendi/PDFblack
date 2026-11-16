@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -27,7 +28,15 @@ from .panels import _settings
 LINKED_KEY = "copilot/linked"
 AGENTS_KEY = "copilot/agents"
 ACTIVE_KEY = "copilot/agent"
+PROMPT_KEY = "copilot/prompt"
 REVIEW_KEY = "review/enabled"
+
+# Vorgabe fuer den Text, der bei der Uebergabe mit der Datei an Copilot geht.
+HANDOVER_PROMPT = (
+    "Hier sind die Unterlagen zur Bewerbung: Lebenslauf, Arbeitszeugnisse, "
+    "Bewerbungsschreiben und Diplome. Bitte lies die Unterlagen und fasse sie "
+    "zusammen."
+)
 
 COPILOT_URI = "ms-copilot:"
 COPILOT_WEB = "https://m365.cloud.microsoft/chat/"
@@ -75,6 +84,12 @@ def review_enabled() -> bool:
 
 def set_review_enabled(enabled: bool) -> None:
     _settings().setValue(REVIEW_KEY, bool(enabled))
+
+
+def handover_prompt() -> str:
+    """Text, der bei der Uebergabe an Copilot mitgeht (leer = Vorgabe)."""
+    gespeichert = str(_settings().value(PROMPT_KEY, "") or "").strip()
+    return gespeichert or HANDOVER_PROMPT
 
 
 def active_agent() -> dict[str, str] | None:
@@ -157,6 +172,19 @@ class PreferencesDialog(QDialog):
         self.open_button = QPushButton("Copilot öffnen")
         layout.addWidget(self.open_button)
 
+        prompt_titel = QLabel("Text an Copilot bei der Übergabe")
+        prompt_titel.setObjectName("SectionLabel")
+        layout.addWidget(prompt_titel)
+
+        self.prompt = QPlainTextEdit(handover_prompt())
+        self.prompt.setPlaceholderText(HANDOVER_PROMPT)
+        self.prompt.setMinimumHeight(90)
+        self.prompt.setToolTip(
+            "Dieser Text geht beim Klick auf einen Agenten-Knopf mit der "
+            "gebündelten Datei an Copilot. Leer lassen heißt: die Vorgabe gilt."
+        )
+        layout.addWidget(self.prompt)
+
         self.review = QCheckBox("Prüfung der Unterlagen anbieten")
         self.review.setChecked(review_enabled())
         self.review.setToolTip(
@@ -232,6 +260,7 @@ class PreferencesDialog(QDialog):
 
     def accept(self) -> None:
         settings = _settings()
+        settings.setValue(PROMPT_KEY, self.prompt.toPlainText().strip())
         settings.setValue(REVIEW_KEY, self.review.isChecked())
         settings.setValue(LINKED_KEY, self.linked.isChecked())
         current = self.agent.currentText()
