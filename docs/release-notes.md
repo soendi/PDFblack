@@ -1,6 +1,12 @@
-## PDFblack 1.1.0
+## PDFblack 1.1.1
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.1.1
+
+- **Kopfzeile ohne Kasten:** Titel und Untertitel von PDFcompare stehen jetzt ohne eigenen Hintergrund in der Kopfzeile. Ist PDFcompare rechts, bleibt sein Text unsichtbar; beim Wechsel nach links blendet er ein, während der Text von PDFblack ausblendet. Beim Zurückwechseln umgekehrt.
+- **PDFcompare-Ansicht:** links die zuletzt geschwärzten PDF-Dateien, rechts zwei Stapel – „Lebenslauf“ als kürzere Liste und „Arbeitszeugnisse“ als längere. Dateien lassen sich aus der linken Liste in einen Stapel ziehen; `Entf` entfernt einen Eintrag wieder. Liste und Zuordnung bleiben über den Programmstart erhalten.
+- **Einstellungen:** Unter **Datei → Einstellungen …** (`Strg+,`) lässt sich PDFcompare mit Windows Copilot verknüpfen und ein Agent auswählen. Windows bietet für andere Programme keine Schnittstelle zum Setzen eines Agenten; PDFblack merkt sich die Auswahl, öffnet Copilot per `ms-copilot:` und kann bei Bedarf einen hinterlegten Agent-Link aufrufen.
 
 ### Neu in 1.1.0
 
@@ -55,13 +61,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.0-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.1.1-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 24 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 32 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 
