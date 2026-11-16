@@ -12,7 +12,7 @@ QMainWindow, QDialog { background: #14161b; }
 QWidget { color: #e6e8ec; }
 QWidget#Header { background: #171a20; border-bottom: 1px solid #23272f; }
 QWidget#Toolbar { background: #14161b; border-bottom: 1px solid #23272f; }
-QWidget#BrandOverlay { background: #171a20; }
+QWidget#BrandOverlay { background: transparent; }
 QFrame#Sidebar { background: #131519; border-right: 1px solid #23272f; }
 QFrame#Findings { background: #131519; border-left: 1px solid #23272f; }
 QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; border: none; }
@@ -71,6 +71,13 @@ QTableWidget {
     gridline-color: #1d222b; selection-background-color: #262c36;
 }
 QTableWidget::item { padding: 4px 6px; }
+QListWidget {
+    background: #10131a; border: 1px solid #262b34; border-radius: 8px;
+    padding: 4px; outline: none;
+}
+QListWidget::item { padding: 5px 6px; border-radius: 5px; }
+QListWidget::item:hover { background: #1d222b; }
+QListWidget::item:selected { background: #262c36; color: #ffffff; }
 QHeaderView::section {
     background: #191c23; color: #8b95a5; border: none;
     border-bottom: 1px solid #262b34; padding: 6px; font-size: 11px;

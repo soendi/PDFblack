@@ -57,6 +57,8 @@ from ..core.updater import (
     is_newer,
 )
 from .branding import compare_logo_pixmap, logo_pixmap
+from .compare import CompareView
+from .preferences import PreferencesDialog
 from .canvas import PdfCanvas
 from .panels import ControlsPanel, DropZone, FindingsPanel
 
@@ -224,6 +226,7 @@ class _BrandBlock(QWidget):
 
         titles = QVBoxLayout()
         titles.setSpacing(0)
+        titles.setContentsMargins(0, 0, 0, 0)
         self.title = QLabel(title_text)
         self.title.setObjectName("AppTitle")
         self.subtitle = QLabel(subtitle_text)
@@ -231,9 +234,30 @@ class _BrandBlock(QWidget):
         titles.addWidget(self.title)
         titles.addWidget(self.subtitle)
 
+        # Titel und Untertitel stecken in einem eigenen Widget: so laesst sich
+        # nur der Text ein- und ausblenden, das Logo bleibt sichtbar.
+        self.text = QWidget(self)
+        self.text.setObjectName("BrandText")
+        self.text.setLayout(titles)
+        self.text.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._text_effect = QGraphicsOpacityEffect(self.text)
+        self._text_effect.setOpacity(1.0)
+        self.text.setGraphicsEffect(self._text_effect)
+
         layout.addWidget(self.logo, 0, Qt.AlignVCenter)
-        layout.addLayout(titles)
+        layout.addWidget(self.text, 0)
         self.adjustSize()
+
+    @property
+    def text_effect(self) -> QGraphicsOpacityEffect:
+        return self._text_effect
+
+    @property
+    def text_opacity(self) -> float:
+        return float(self._text_effect.opacity())
+
+    def set_text_opacity(self, value: float) -> None:
+        self._text_effect.setOpacity(max(0.0, min(1.0, value)))
 
 
 class AppHeader(QWidget):
@@ -250,6 +274,7 @@ class AppHeader(QWidget):
     LOGO_SIZE = 34
     GAP = 11
     SLIDE_MS = 320
+    TEXT_MS = 220
 
     def __init__(self) -> None:
         super().__init__()
@@ -276,6 +301,16 @@ class AppHeader(QWidget):
         self._slide = QPropertyAnimation(self.compare, b"pos", self)
         self._slide.setDuration(self.SLIDE_MS)
         self._slide.setEasingCurve(QEasingCurve.OutCubic)
+
+        # Beim Start steht PDFcompare rechts und zeigt keinen Text.
+        self.compare.set_text_opacity(0.0)
+        self._compare_fade = QPropertyAnimation(
+            self.compare.text_effect, b"opacity", self
+        )
+        self._black_fade = QPropertyAnimation(self.black.text_effect, b"opacity", self)
+        for animation in (self._compare_fade, self._black_fade):
+            animation.setDuration(self.TEXT_MS)
+            animation.setEasingCurve(QEasingCurve.InOutQuad)
 
         self.black.logo.setToolTip(f"{APP_NAME} anzeigen")
         self.compare.logo.setToolTip(f"{COMPARE_NAME} anzeigen")
@@ -342,6 +377,31 @@ class AppHeader(QWidget):
     def set_program(self, program: str, animate: bool = True) -> None:
         self._program = program
         self._place(animate=animate, program=program)
+        self._fade_text(program, animate=animate)
+
+    def _fade_text(self, program: str, animate: bool = True) -> None:
+        """Nur der Text des aktiven Programms ist zu sehen.
+
+        Rechts stehend zeigt PDFcompare keinen Text; beim Wechsel nach links
+        blendet er ein, waehrend der Text von PDFblack ausblendet.
+        """
+        compare_target = 1.0 if program == "pdfcompare" else 0.0
+        black_target = 0.0 if program == "pdfcompare" else 1.0
+        if not animate:
+            for animation in (self._compare_fade, self._black_fade):
+                animation.stop()
+            self.compare.set_text_opacity(compare_target)
+            self.black.set_text_opacity(black_target)
+            return
+        self._animate_text(self._compare_fade, self.compare, compare_target)
+        self._animate_text(self._black_fade, self.black, black_target)
+
+    @staticmethod
+    def _animate_text(animation, block: "_BrandBlock", target: float) -> None:
+        animation.stop()
+        animation.setStartValue(block.text_opacity)
+        animation.setEndValue(target)
+        animation.start()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -502,24 +562,8 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_compare_view(self) -> QWidget:
-        """Leere Maske fuer PDFcompare - der Inhalt folgt spaeter."""
-        view = QWidget()
-        layout = QVBoxLayout(view)
-        layout.setContentsMargins(40, 40, 40, 40)
-        layout.setSpacing(6)
-        layout.addStretch(1)
-
-        title = QLabel(COMPARE_NAME)
-        title.setObjectName("AppTitle")
-        title.setAlignment(Qt.AlignCenter)
-        hint = QLabel("Hier entsteht die Vergleichsansicht.")
-        hint.setObjectName("Hint")
-        hint.setAlignment(Qt.AlignCenter)
-
-        layout.addWidget(title)
-        layout.addWidget(hint)
-        layout.addStretch(1)
-        return view
+        """PDFcompare: zuletzt geschwaerzte Dateien und zwei Stapel."""
+        return CompareView()
 
     def _show_program(self, program: str) -> None:
         """Zwischen PDFblack und PDFcompare umschalten."""
@@ -527,6 +571,8 @@ class MainWindow(QMainWindow):
             return
         self._program = program
         self.header.set_program(program)
+        if program == "pdfcompare":
+            self.compare_view.refresh()
         self._fade_to(self.black_view if program == "pdfblack" else self.compare_view)
 
     def _stop_fade(self) -> None:
@@ -596,6 +642,12 @@ class MainWindow(QMainWindow):
         save_action.setShortcut(QKeySequence.Save)
         save_action.triggered.connect(self._save_as)
         file_menu.addAction(save_action)
+
+        file_menu.addSeparator()
+        settings_action = QAction("Einstellungen …", self)
+        settings_action.setShortcut(QKeySequence("Ctrl+,"))
+        settings_action.triggered.connect(self._open_preferences)
+        file_menu.addAction(settings_action)
 
         file_menu.addSeparator()
         quit_action = QAction("Beenden", self)
@@ -1051,6 +1103,7 @@ class MainWindow(QMainWindow):
         QApplication.restoreOverrideCursor()
 
         self._last_dir = os.path.dirname(target) or self._last_dir
+        self.compare_view.remember(target)
         self.statusBar().showMessage(f"{count} Stellen geschwärzt: {target}")
         QMessageBox.information(
             self,
@@ -1062,6 +1115,10 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Hilfe
     # ------------------------------------------------------------------
+
+    def _open_preferences(self) -> None:
+        dialog = PreferencesDialog(self)
+        dialog.exec()
 
     def _show_guide(self) -> None:
         QMessageBox.information(
