@@ -1,6 +1,10 @@
-## PDFblack 1.2.0
+## PDFblack 1.2.1
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.2.1
+
+- **Prüfung ist fakultativ:** Unter **Datei → Einstellungen …** lässt sich „Prüfung der Unterlagen anbieten“ abschalten. Dann verschwindet der Knopf „Unterlagen prüfen …“ unter den Zeugnissen und PDFcompare bleibt schlank; die Übergabe an die Agenten bleibt unberührt. Voreingestellt ist die Prüfung an.
 
 ### Neu in 1.2.0
 
@@ -86,13 +90,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.2.0-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.2.1-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 55 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
+- 57 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

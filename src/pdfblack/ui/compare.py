@@ -530,6 +530,8 @@ class CompareView(QWidget):
 
     def _open_review(self) -> None:
         """Prüffenster mit lokalen Befunden und der Copilot-Frage öffnen."""
+        if not preferences.review_enabled():
+            return
         dialog = ReviewDialog(self.life.paths(), self.certs.paths(), self)
         dialog.exec()
 
@@ -592,6 +594,8 @@ class CompareView(QWidget):
         self._sync_allowed()
         self._refreshing = False
         self._rebuild_agent_buttons()
+        # Die Pruefung ist fakultativ: ohne Schalter kein Knopf.
+        self.review_button.setVisible(preferences.review_enabled())
 
     def remember(self, path: str) -> None:
         """Eine frisch geschwaerzte Datei oben in die Liste aufnehmen."""

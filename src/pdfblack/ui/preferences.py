@@ -27,6 +27,7 @@ from .panels import _settings
 LINKED_KEY = "copilot/linked"
 AGENTS_KEY = "copilot/agents"
 ACTIVE_KEY = "copilot/agent"
+REVIEW_KEY = "review/enabled"
 
 COPILOT_URI = "ms-copilot:"
 COPILOT_WEB = "https://m365.cloud.microsoft/chat/"
@@ -65,6 +66,15 @@ def save_agents(entries: list[dict[str, str]]) -> None:
 
 def is_linked() -> bool:
     return bool(_settings().value(LINKED_KEY, False, type=bool))
+
+
+def review_enabled() -> bool:
+    """Ist die Prüfung der Unterlagen eingeschaltet?"""
+    return bool(_settings().value(REVIEW_KEY, True, type=bool))
+
+
+def set_review_enabled(enabled: bool) -> None:
+    _settings().setValue(REVIEW_KEY, bool(enabled))
 
 
 def active_agent() -> dict[str, str] | None:
@@ -147,6 +157,14 @@ class PreferencesDialog(QDialog):
         self.open_button = QPushButton("Copilot öffnen")
         layout.addWidget(self.open_button)
 
+        self.review = QCheckBox("Prüfung der Unterlagen anbieten")
+        self.review.setChecked(review_enabled())
+        self.review.setToolTip(
+            "Zeigt unter den Zeugnissen den Knopf „Unterlagen prüfen …“: Lücken, "
+            "Scans und die Frage an Copilot. Ausschalten lässt PDFcompare schlank."
+        )
+        layout.addWidget(self.review)
+
         hint = QLabel(HINT)
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
@@ -214,6 +232,7 @@ class PreferencesDialog(QDialog):
 
     def accept(self) -> None:
         settings = _settings()
+        settings.setValue(REVIEW_KEY, self.review.isChecked())
         settings.setValue(LINKED_KEY, self.linked.isChecked())
         current = self.agent.currentText()
         settings.setValue(ACTIVE_KEY, current if self.linked.isChecked() else "")

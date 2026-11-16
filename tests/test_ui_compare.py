@@ -457,3 +457,45 @@ def test_schliessen_behaelt_dateien_bei_abgelehnter_frage(
 
     view.deleteLater()
     qt_app.processEvents()
+
+
+def test_pruefung_ist_fakultativ(qt_app, settings_dir, monkeypatch):
+    from pdfblack.ui import compare, preferences
+
+    preferences.set_review_enabled(True)
+    view = compare.CompareView()
+    assert view.review_button.isHidden() is False
+
+    preferences.set_review_enabled(False)
+    view.refresh()
+    assert view.review_button.isHidden() is True
+
+    # Ausgeschaltet oeffnet der Knopf auch bei einem Klick nichts.
+    geoeffnet: list[tuple] = []
+    monkeypatch.setattr(
+        compare, "ReviewDialog", lambda *args, **kwargs: geoeffnet.append(args)
+    )
+    view.review_button.click()
+    assert geoeffnet == []
+
+    preferences.set_review_enabled(True)
+    view.refresh()
+    assert view.review_button.isHidden() is False
+    view.deleteLater()
+    qt_app.processEvents()
+
+
+def test_einstellungen_schalten_die_pruefung(qt_app, settings_dir):
+    from pdfblack.ui import preferences
+
+    dialog = preferences.PreferencesDialog()
+    assert dialog.review.isChecked() is True
+    dialog.review.setChecked(False)
+    dialog.accept()
+    assert preferences.review_enabled() is False
+
+    wieder = preferences.PreferencesDialog()
+    assert wieder.review.isChecked() is False
+    for widget in (dialog, wieder):
+        widget.deleteLater()
+    qt_app.processEvents()

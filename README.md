@@ -1,4 +1,4 @@
-# PDFblack 1.2.0
+# PDFblack 1.2.1
 
 Vertrauliche Daten in PDF-Dateien automatisch schwärzen – mit Vorschau, Prüfung
 und echter Entfernung des Textes.
@@ -145,7 +145,7 @@ Alle Varianten setzen eine virtuelle Umgebung mit den Abhängigkeiten voraus.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-# Ergebnis: dist\PDFblack-1.2.0-Setup.exe  (benötigt Inno Setup 6)
+# Ergebnis: dist\PDFblack-1.2.1-Setup.exe  (benötigt Inno Setup 6)
 ```
 
 **macOS (.app + ZIP)**
