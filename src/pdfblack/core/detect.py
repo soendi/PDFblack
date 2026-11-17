@@ -14,11 +14,10 @@ import re
 import tempfile
 import threading
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 from typing import Callable
 
-from . import berufe, geburtsdatum as geburtsdatum_core, plz
+from . import berufe, geburtsdatum as geburtsdatum_core, lerndatei, lernregeln, plz
 from .extract import TextMap, open_document
 from .models import Category, Finding
 from .rules import Rule, compiled as compiled_rule, rules_for_groups
@@ -188,6 +187,9 @@ class DetectionOptions:
 class DetectionResult:
     findings: list[Finding] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Wirkung der Lerndatei auf diesen Durchlauf.
+    learned_off: int = 0
+    learned_changed: int = 0
 
 
 @dataclass
@@ -346,30 +348,31 @@ def _nur_geburtsdatum(
     anderer Schreibweise genannt (1.3.95 / 01. März 1995), wird auch das
     gefunden und mitgeschwaerzt.
     """
-    daten: list[tuple[_Candidate, date]] = []
+    daten: list[tuple[_Candidate, geburtsdatum_core.Angabe]] = []
     uebrige: list[_Candidate] = []
     for candidate in candidates:
         if candidate.category is Category.DATE and candidate.entity != "MANUAL":
-            datum = geburtsdatum_core.als_datum(candidate.text)
-            if datum is None:
+            angabe = geburtsdatum_core.als_angabe(candidate.text)
+            if angabe is None:
                 # Kein lesbares Datum: als Datum nicht brauchbar.
                 continue
-            daten.append((candidate, datum))
+            daten.append((candidate, angabe))
         else:
             uebrige.append(candidate)
 
     # Ist nur ein vollstaendiges Datum genannt, entscheidet die naechsthoehere
     # Jahreszahl im Dokument ("05/02/1990" und sonst nur "2020").
+    vollstaendig = {angabe.datum for _, angabe in daten if angabe.datum is not None}
     jahre: list[int] = []
-    if textmap is not None and len({datum for _, datum in daten}) == 1:
+    if textmap is not None and len(vollstaendig) == 1:
         for index in range(total):
             jahre.extend(geburtsdatum_core.jahreszahlen(textmap.page(index).text))
 
-    ziel = geburtsdatum_core.geburtsdatum([datum for _, datum in daten], jahre)
+    ziel = geburtsdatum_core.geburtsdatum([angabe for _, angabe in daten], jahre)
     if ziel is None:
         return uebrige
-    for candidate, datum in daten:
-        if datum != ziel:
+    for candidate, angabe in daten:
+        if angabe.datum != ziel:
             continue
         candidate.category = Category.BIRTHDATE
         candidate.source = "Geburtsdatum \u00b7 \u00e4ltestes Datum"
@@ -458,10 +461,6 @@ def _ai_text_allowed(entity_text: str) -> bool:
     return True
 
 
-_AI_DATE_ONLY = re.compile(
-    r"\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{2,4}"
-    r"|\d{4}\s*[-./]\s*\d{1,2}\s*[-./]\s*\d{1,2}"
-)
 # Jahreszahlen, die das Sprachmodell als Ort meldet: "2026", "10/2026",
 # "2025 - 2026", "10/2025 - 05/2026". Sie gehoeren nicht zu PLZ / Ort.
 _AI_YEAR_ONLY = re.compile(
@@ -480,11 +479,16 @@ def _ai_location_is_date(entity_text: str) -> bool:
     Datumsregel, nicht zu den Postleitzahlen.
     """
     cleaned = entity_text.strip()
-    for muster in (_AI_DATE_ONLY, _AI_YEAR_ONLY):
-        treffer = muster.search(cleaned)
-        if treffer is None:
+    stellen: list[tuple[int, int] | None] = [
+        geburtsdatum_core.datumsspanne(cleaned)
+    ]
+    treffer = _AI_YEAR_ONLY.search(cleaned)
+    if treffer is not None:
+        stellen.append(treffer.span())
+    for spanne in stellen:
+        if spanne is None:
             continue
-        rest = cleaned[: treffer.start()] + cleaned[treffer.end() :]
+        rest = cleaned[: spanne[0]] + cleaned[spanne[1] :]
         if not any(char.isalpha() for char in rest):
             return True
     return False
@@ -792,6 +796,15 @@ def run_detection(
                     uid=uid,
                 )
             )
-        return DetectionResult(findings, warnings)
+        # Feste Regeln aus dem Code (aus der Lerndatei erzeugt) gelten immer,
+        # die vorlaeufigen Beispiele der Lerndatei danach.
+        findings = lernregeln.anwenden(findings)
+        anwendung = lerndatei.anwenden(findings)
+        return DetectionResult(
+            anwendung.treffer,
+            warnings,
+            learned_off=anwendung.abgehakt,
+            learned_changed=anwendung.umkategorisiert,
+        )
     finally:
         doc.close()

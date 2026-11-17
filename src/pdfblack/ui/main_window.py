@@ -45,9 +45,9 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, APP_TAGLINE, APP_VERSION
-from ..core import ablage, ocr as ocr_core
+from ..core import ablage, lerndatei, ocr as ocr_core
 from ..core.detect import DetectionOptions, run_detection
-from ..core.extract import open_document
+from ..core.extract import TextMap, open_document
 from ..core.models import Category, Finding, PdfPasswordError
 from ..core.redact import apply_redactions
 from ..core.updater import (
@@ -60,6 +60,7 @@ from ..core.updater import (
 )
 from .branding import compare_logo_pixmap, logo_pixmap, ocr_logo_pixmap
 from .compare import CompareView, delete_redacted
+from .lernfenster import Lernfenster
 from .ocr_view import OcrView
 from .preferences import PreferencesDialog
 from .canvas import PdfCanvas
@@ -793,6 +794,26 @@ class MainWindow(QMainWindow):
         file_menu.addAction(save_action)
 
         file_menu.addSeparator()
+        lern_action = QAction("Lerndatei herunterladen …", self)
+        lern_action.setToolTip(
+            "Alle Kategorie-Korrekturen als Lerndatei für die Weiterentwicklung sichern"
+        )
+        lern_action.triggered.connect(self._download_lerndatei)
+        file_menu.addAction(lern_action)
+
+        ansehen_action = QAction("Lerndatei ansehen …", self)
+        ansehen_action.setToolTip(
+            "Gelernte Beispiele prüfen und einzelne Regeln löschen"
+        )
+        ansehen_action.triggered.connect(self._show_lerndatei)
+        file_menu.addAction(ansehen_action)
+
+        reset_action = QAction("Lerndatei zurücksetzen …", self)
+        reset_action.setToolTip("Gelernte Beispiele verwerfen und wieder nach den Programmwerten einordnen")
+        reset_action.triggered.connect(self._reset_lerndatei)
+        file_menu.addAction(reset_action)
+
+        file_menu.addSeparator()
         settings_action = QAction("Einstellungen …", self)
         settings_action.setShortcut(QKeySequence("Ctrl+,"))
         settings_action.triggered.connect(self._open_preferences)
@@ -860,6 +881,8 @@ class MainWindow(QMainWindow):
         self.findings_panel.findingSelected.connect(self._select_finding)
         self.findings_panel.selectAllRequested.connect(self._set_all_enabled)
         self.findings_panel.removeRequested.connect(self._remove_selected)
+        self.findings_panel.categoryChanged.connect(self._set_finding_category)
+        self.findings_panel.falsePositiveRequested.connect(self._mark_false_positive)
 
         self.scroll.verticalScrollBar().valueChanged.connect(self._update_page_label)
 
@@ -1108,10 +1131,16 @@ class MainWindow(QMainWindow):
             )
         else:
             active = sum(1 for f in self._findings if f.enabled)
-            self.statusBar().showMessage(
+            meldung = (
                 f"{len(self._findings)} Treffer markiert ({active} aktiv). "
                 "Prüfen, dann „Geschwärzte Kopie speichern“."
             )
+            gelernt = self._lerndatei_hinweis(
+                result.learned_off, result.learned_changed
+            )
+            if gelernt:
+                meldung = f"{meldung} Lerndatei: {gelernt}."
+            self.statusBar().showMessage(meldung)
 
     def _on_detection_failed(self, message: str) -> None:
         self._set_busy(False)
@@ -1167,6 +1196,199 @@ class MainWindow(QMainWindow):
         self.findings_panel.update_counts(self._findings)
         self.canvas.update()
         self._refresh_state()
+
+    # --- Lerndatei ----------------------------------------------------
+
+    def _finding(self, uid: int) -> Finding | None:
+        for finding in self._findings:
+            if finding.uid == uid:
+                return finding
+        return None
+
+    def _gleichnamige(self, finding: Finding) -> list[Finding]:
+        """Alle Treffer mit demselben Text - wie in der Liste angezeigt."""
+        text = finding.display_text
+        return [item for item in self._findings if item.display_text == text]
+
+    def _set_finding_category(
+        self, uid: int, category: Category, alle: bool = False
+    ) -> None:
+        """Kategorie eines Treffers - auf Wunsch aller gleichen - korrigieren."""
+        ziel = self._finding(uid)
+        if ziel is None:
+            return
+        betroffen = self._gleichnamige(ziel) if alle else [ziel]
+        if all(finding.category is category for finding in betroffen):
+            return
+        vorher = ziel.category
+        for finding in betroffen:
+            finding.category = category
+            if "vom Benutzer" not in finding.source:
+                finding.source = f"{finding.source} · vom Benutzer korrigiert"
+        self._lerne(ziel, vorher, category, len(betroffen))
+        self._sync_findings()
+        if len(betroffen) > 1:
+            meldung = (
+                f"{len(betroffen)} gleiche Treffer als {category.value} eingeordnet "
+                "und als Lernbeispiel gespeichert."
+            )
+        else:
+            meldung = (
+                f"„{ziel.display_text}“ als {category.value} eingeordnet und als "
+                "Lernbeispiel gespeichert."
+            )
+        self.statusBar().showMessage(meldung)
+
+    def _mark_false_positive(self, uid: int, alle: bool = False) -> None:
+        """Treffer als Fehlalarm abhaken - auf Wunsch alle gleichen."""
+        ziel = self._finding(uid)
+        if ziel is None:
+            return
+        betroffen = self._gleichnamige(ziel) if alle else [ziel]
+        vorher = ziel.category
+        for finding in betroffen:
+            finding.enabled = False
+            if "vom Benutzer" not in finding.source:
+                finding.source = f"{finding.source} · vom Benutzer als Fehlalarm verworfen"
+        self._lerne(ziel, vorher, None, len(betroffen))
+        self._sync_findings()
+        if len(betroffen) > 1:
+            meldung = (
+                f"{len(betroffen)} gleiche Treffer als Fehlalarm abgehakt und als "
+                "Lernbeispiel gespeichert."
+            )
+        else:
+            meldung = (
+                f"„{ziel.display_text}“ als Fehlalarm abgehakt und als Lernbeispiel "
+                "gespeichert."
+            )
+        self.statusBar().showMessage(meldung)
+
+    def _lerne(
+        self,
+        finding: Finding,
+        vorher: Category | None,
+        nachher: Category | None,
+        anzahl: int = 1,
+    ) -> None:
+        """Eine Korrektur mit Kontext in die Lerndatei schreiben."""
+        eintrag = lerndatei.korrektur(
+            finding, self._seitentext(finding.page), vorher, nachher, anzahl
+        )
+        try:
+            lerndatei.merken(eintrag)
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                "Lerndatei",
+                f"Die Korrektur konnte nicht gespeichert werden:\n{exc}",
+            )
+
+    def _seitentext(self, seite: int) -> str:
+        """Text einer Seite der geoeffneten Datei - fuer den Kontext im Beispiel."""
+        if not self._path:
+            return ""
+        doc = None
+        try:
+            doc = open_document(self._path, self._password)
+            return TextMap(doc).page(seite).text
+        except Exception:  # noqa: BLE001 - ohne Kontext trotzdem merken
+            return ""
+        finally:
+            if doc is not None:
+                doc.close()
+
+    @staticmethod
+    def _lerndatei_hinweis(abgehakt: int, umkategorisiert: int) -> str:
+        """Kurztext, was die Lerndatei in diesem Durchlauf bewirkt hat."""
+        teile: list[str] = []
+        if abgehakt:
+            teile.append(f"{abgehakt} abgehakt")
+        if umkategorisiert:
+            teile.append(f"{umkategorisiert} umkategorisiert")
+        return ", ".join(teile)
+
+    def _show_lerndatei(self) -> None:
+        """Fenster mit den gelernten Beispielen oeffnen."""
+        dialog = Lernfenster(self)
+        dialog.exec()
+        if not dialog.geloescht:
+            return
+        self.statusBar().showMessage(
+            f"{dialog.geloescht} gelernte Beispiele gelöscht."
+        )
+        # Ohne die Beispiele gelten wieder die Programmmuster.
+        if self._path is not None and not self._busy:
+            self._run_detection()
+
+    def _reset_lerndatei(self) -> None:
+        """Gelernte Beispiele nach Rueckfrage verwerfen."""
+        anzahl = len(lerndatei.eintraege())
+        if not anzahl:
+            QMessageBox.information(
+                self,
+                "Lerndatei",
+                "Es sind keine gelernten Beispiele gespeichert.",
+            )
+            return
+        antwort = QMessageBox.question(
+            self,
+            "Lerndatei zurücksetzen",
+            f"{anzahl} gelernte Beispiele werden verworfen. Danach gelten wieder "
+            "allein die Regeln im Programm.\n\nLerndatei wirklich zurücksetzen?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if antwort != QMessageBox.Yes:
+            return
+        try:
+            verworfen = lerndatei.zuruecksetzen()
+        except OSError as exc:
+            QMessageBox.critical(
+                self,
+                "Lerndatei",
+                f"Die Lerndatei konnte nicht gelöscht werden:\n{exc}",
+            )
+            return
+        self.statusBar().showMessage(
+            f"Lerndatei zurückgesetzt: {verworfen} Beispiele verworfen."
+        )
+        # Die Liste zeigt sonst weiter den alten Lernstand.
+        if self._path is not None and not self._busy:
+            self._run_detection()
+
+    def _download_lerndatei(self) -> None:
+        """Alle Korrekturen als Lerndatei an einen Ort der Wahl schreiben."""
+        anzahl = len(lerndatei.eintraege())
+        if not anzahl:
+            QMessageBox.information(
+                self,
+                "Lerndatei",
+                "Es gibt noch keine Korrekturen. Rechtsklick auf einen Treffer in "
+                "der Liste ordnet ihn einer anderen Kategorie zu; jede Änderung "
+                "landet in der Lerndatei.",
+            )
+            return
+        ziel, _ = QFileDialog.getSaveFileName(
+            self,
+            "Lerndatei herunterladen",
+            str(Path.home() / "PDFblack-Lerndatei.jsonl"),
+            "Lerndatei (*.jsonl)",
+        )
+        if not ziel:
+            return
+        try:
+            geschrieben = lerndatei.exportieren(ziel)
+        except OSError as exc:
+            QMessageBox.critical(
+                self,
+                "Lerndatei",
+                f"Die Datei konnte nicht geschrieben werden:\n{exc}",
+            )
+            return
+        self.statusBar().showMessage(
+            f"Lerndatei mit {geschrieben} Beispielen gespeichert: {ziel}"
+        )
 
     def _select_finding(self, uid: int) -> None:
         self.canvas.set_selected(uid)
@@ -1607,5 +1829,9 @@ class MainWindow(QMainWindow):
             delete_redacted(kopien)
         # PDFcompare: Listen leeren und nach den Dateien fragen.
         self.compare_view.cleanup_on_close(self)
+        # Arbeitsdateien der Texterkennung: die gerade geoeffnete Datei bleibt
+        # stehen, bis das Dokument geschlossen ist, und verschwindet danach.
+        self.ocr_view.cleanup_temp(self._path)
         self.canvas.clear()
+        self.ocr_view.cleanup_temp()
         event.accept()

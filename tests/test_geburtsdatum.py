@@ -156,7 +156,7 @@ def test_erkennung_schwaerzt_alle_schreibweisen_des_geburtsdatums(tmp_path):
         for finding in ergebnis.findings
         if finding.category is Category.BIRTHDATE
     ]
-    assert texte == ["Geburtsdatum: 1.3.95", "01. März 1995"]
+    assert texte == ["Geburtsdatum: 1.3.95", "Geboren am 01. März 1995"]
     assert "20.10.2026" not in texte
 
 
@@ -200,7 +200,7 @@ def test_erkennung_schwaerzt_einziges_datum_mit_juengerer_jahreszahl(tmp_path):
         for finding in ergebnis.findings
         if finding.category is Category.BIRTHDATE
     ]
-    assert treffer == ["05/02/1990"]
+    assert treffer == ["Geburtsdatum 05/02/1990"]
 
 
 def test_erkennung_ohne_juengere_jahreszahl_schwaerzt_nichts(tmp_path):
@@ -217,6 +217,126 @@ def test_erkennung_ohne_juengere_jahreszahl_schwaerzt_nichts(tmp_path):
         for finding in ergebnis.findings
         if finding.category in (Category.DATE, Category.BIRTHDATE)
     ] == []
+
+
+def test_zahlenschreibweisen_mit_tag_und_monat():
+    faelle = {
+        "12.03.1985": date(1985, 3, 12),
+        "12.3.85": date(1985, 3, 12),
+        "3. 12 1985": date(1985, 12, 3),
+        "3.12 1985": date(1985, 12, 3),
+        "3. 12. 1985": date(1985, 12, 3),
+        "03 . 12 . 1985": date(1985, 12, 3),
+        "12/03/1985": date(1985, 3, 12),
+        "5/2/90": date(1990, 2, 5),
+        "12-03-1985": date(1985, 3, 12),
+        "12 / 3 / 85": date(1985, 3, 12),
+        "1985-03-12": date(1985, 3, 12),
+        "1985.03.12": date(1985, 3, 12),
+        "31.12.1999": date(1999, 12, 31),
+        "1.1.00": date(2000, 1, 1),
+    }
+    for text, erwartet in faelle.items():
+        assert geburtsdatum.als_datum(text) == erwartet, text
+    # Steht der Monat vorn, wird es trotzdem richtig gelesen.
+    assert geburtsdatum.als_datum("05/31/1990") == date(1990, 5, 31)
+
+
+def test_monatsnamen_in_allen_abkuerzungen():
+    faelle = {
+        "12. März 1985": date(1985, 3, 12),
+        "12. Maerz 1985": date(1985, 3, 12),
+        "12. Marz 1985": date(1985, 3, 12),
+        "12 März 1985": date(1985, 3, 12),
+        "12. Mrz 85": date(1985, 3, 12),
+        "12. Mrz. 1995": date(1995, 3, 12),
+        "1. Jänner 2000": date(2000, 1, 1),
+        "1. Jaenner 2000": date(2000, 1, 1),
+        "1. Januar 2000": date(2000, 1, 1),
+        "5. Sept 1999": date(1999, 9, 5),
+        "5. September 1999": date(1999, 9, 5),
+        "31. Dez. 1999": date(1999, 12, 31),
+    }
+    for text, erwartet in faelle.items():
+        assert geburtsdatum.als_datum(text) == erwartet, text
+
+
+def test_monat_jahr_ohne_tag():
+    angabe = geburtsdatum.Angabe
+    assert geburtsdatum.als_angabe("10/2025") == angabe(2025, 10)
+    assert geburtsdatum.als_angabe("1/85") == angabe(1985, 1)
+    assert geburtsdatum.als_angabe("03-2025") == angabe(2025, 3)
+    assert geburtsdatum.als_angabe("03.1985") == angabe(1985, 3)
+    assert geburtsdatum.als_angabe("März 1985") == angabe(1985, 3)
+    assert geburtsdatum.als_angabe("September 1999") == angabe(1999, 9)
+    # Ohne Tag ist es kein vollstaendiges Datum.
+    assert geburtsdatum.als_datum("10/2025") is None
+    # Monat 13 gibt es nicht, Preise mit Punkt bleiben unangetastet.
+    assert geburtsdatum.als_angabe("13/2025") is None
+    assert geburtsdatum.als_angabe("12.34") is None
+
+
+def test_monat_jahr_zaehlt_nur_als_vergleich():
+    """Monat/Jahr ohne Tag ist nie das Geburtsdatum, trennt aber die Daten."""
+    assert geburtsdatum.geburtsdatum(
+        [date(1985, 3, 12), geburtsdatum.Angabe(2025, 10)]
+    ) == date(1985, 3, 12)
+    # Ein halbes Datum allein reicht nicht.
+    assert geburtsdatum.geburtsdatum([geburtsdatum.Angabe(1985, 3)]) is None
+    # Liegt die Monat/Jahr-Angabe im selben Jahr, ist nichts sicher.
+    assert geburtsdatum.geburtsdatum(
+        [date(1985, 3, 12), geburtsdatum.Angabe(1985, 10)]
+    ) is None
+
+
+def test_datumsregel_findet_alle_schreibweisen():
+    from pdfblack.core.rules import compiled, rules_for_groups
+
+    regel = next(r for r in rules_for_groups(("date",)) if r.key == "date")
+    text = (
+        "12.03.1985 | 12.3.85 | 3. 12 1985 | 3.12 85 | 03 . 12 . 1985 | "
+        "12/03/1985 | 5/2/90 | 12-03-1985 | 3. März 1985 | 3. Mrz 85 | "
+        "2026-10-20 | 10/2025 | 1/85 | 03.1985 | März 1985"
+    )
+    treffer = [m.group(0) for m in compiled(regel).finditer(text)]
+    assert treffer == [
+        "12.03.1985",
+        "12.3.85",
+        "3. 12 1985",
+        "3.12 85",
+        "03 . 12 . 1985",
+        "12/03/1985",
+        "5/2/90",
+        "12-03-1985",
+        "3. März 1985",
+        "3. Mrz 85",
+        "2026-10-20",
+        "10/2025",
+        "1/85",
+        "03.1985",
+        "März 1985",
+    ]
+
+
+def test_erkennung_findet_neue_schreibweisen(tmp_path):
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    quelle = _pdf(
+        tmp_path / "cv.pdf",
+        [
+            "Geburtsdatum: 3. 12 1985",
+            "Anstellung 10/2025",
+            "Zeugnis vom 12-03-2026",
+        ],
+    )
+    ergebnis = run_detection(str(quelle), DetectionOptions(use_ai=False, rule_groups=("date",)))
+
+    texte = [
+        finding.text
+        for finding in ergebnis.findings
+        if finding.category is Category.BIRTHDATE
+    ]
+    assert texte == ["Geburtsdatum: 3. 12 1985"]
 
 
 if __name__ == "__main__":  # pragma: no cover

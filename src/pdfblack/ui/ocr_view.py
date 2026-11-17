@@ -433,6 +433,28 @@ class OcrView(QWidget):
         if self._result_path:
             self.openInBlackRequested.emit(self._result_path)
 
+    def cleanup_temp(self, keep: str | None = None) -> None:
+        """Arbeitsdateien der Erkennung loeschen.
+
+        Mit ``keep`` bleibt genau diese Datei stehen; das Beenden raeumt
+        zuerst alles andere weg und die geoeffnete Datei erst, nachdem das
+        Dokument geschlossen ist.
+        """
+        if not self._temp_dir:
+            return
+        ordner = Path(self._temp_dir)
+        behalten = os.path.abspath(keep) if keep else None
+        for datei in ordner.glob("*.pdf"):
+            if behalten and os.path.abspath(str(datei)) == behalten:
+                continue
+            try:
+                datei.unlink()
+            except OSError:  # belegt oder schon weg - beim Raeumen egal
+                pass
+        if behalten is None:
+            shutil.rmtree(ordner, ignore_errors=True)
+            self._temp_dir = None
+
     # -- Zustand ------------------------------------------------------
 
     def _refresh(self, busy: bool = False) -> None:

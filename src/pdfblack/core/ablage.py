@@ -5,6 +5,11 @@ Benutzerprofil (``PDFblack/Geschwaerzt``, unter Windows also
 ``C:\\Users\\<Name>\\PDFblack\\Geschwärzt``). Der Ordner ist als Zwischenablage
 gedacht: Beim Beenden von PDFblack werden die Kopien wieder entfernt, das
 Original bleibt unberuehrt.
+
+Geraeumt wird ausschliesslich dieser Unterordner, nicht der Benutzerordner
+darueber. Dort liegt die Lerndatei (``PDFblack/lerndatei.jsonl``, siehe
+``core/lerndatei.py``); sie gehoert dem Benutzer und darf beim Aufraeumen nie
+mitgeloescht werden (abgesichert in ``tests/test_ablage.py``).
 """
 
 from __future__ import annotations
@@ -47,7 +52,11 @@ def dateien() -> list[Path]:
 
 
 def leeren() -> int:
-    """Alle Dateien in der Ablage loeschen. Rueckgabe: Anzahl."""
+    """Alle Dateien in der Ablage loeschen. Rueckgabe: Anzahl.
+
+    Betrifft nur den Ordner ``Geschwärt``; der Benutzerordner darueber mit
+    der Lerndatei bleibt unangetastet.
+    """
     anzahl = 0
     for datei in dateien():
         try:

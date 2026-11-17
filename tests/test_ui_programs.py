@@ -173,6 +173,49 @@ def test_scan_wechselt_automatisch_zu_pdfocr(window, qt_app, tmp_path, monkeypat
     assert window._program == "pdfblack"
 
 
+def test_arbeitsdateien_der_erkennung_verschwinden_beim_beenden(
+    window, tmp_path, monkeypatch
+):
+    """Die Temp-Dateien der Texterkennung werden beim Beenden aufgeraeumt."""
+    from pdfblack.core.ocr import Word
+    from pdfblack.ui import ocr_view
+
+    class FakeEngine:
+        name = "Test"
+
+        def available(self) -> bool:
+            return True
+
+        def read_words(self, png, size):
+            return [Word("Dachdecker", (300.0, 600.0, 540.0, 650.0))]
+
+    monkeypatch.setattr(ocr_view, "make_engine", lambda language: FakeEngine())
+
+    scan = tmp_path / "scan.pdf"
+    _scan_pdf(scan)
+    window.load_pdf(str(scan))
+    assert _wait_until(
+        lambda: window._path == window.ocr_view._result_path, 8000
+    ), "Ergebnis nicht geladen"
+    ergebnis = Path(window.ocr_view._result_path)
+    ordner = ergebnis.parent
+    assert ergebnis.exists()
+
+    # Ein zweiter Lauf legt eine weitere Arbeitsdatei an - beide raeumen sich.
+    zweiter = tmp_path / "scan2.pdf"
+    _scan_pdf(zweiter)
+    window.ocr_view.open_path(str(zweiter), start=True)
+    assert _wait_until(
+        lambda: len(list(ordner.glob("scan2_ocr-*.pdf"))) > 0, 8000
+    ), "zweiter Lauf ohne Ergebnis"
+    assert len(list(ordner.glob("*.pdf"))) >= 2
+
+    window.close()
+    QtTest.QTest.qWait(200)
+    assert not ergebnis.exists(), "Arbeitsdatei blieb liegen"
+    assert not ordner.exists(), "Temp-Ordner blieb liegen"
+
+
 def test_drittes_programm_pdfocr(window):
     """PDFocr: gruener Button, eigene leere Seite, Text nur beim aktiven Programm."""
     header = window.header
@@ -451,3 +494,250 @@ def test_geschwaerzte_kopie_landet_im_benutzerordner(
     window.close()
     qt_app.processEvents()
     assert ablage.dateien() == []
+
+
+def test_rechtsklick_ordnet_neu_und_schreibt_die_lerndatei(
+    window, qt_app, tmp_path, monkeypatch
+):
+    """Kategorie im Kontextmenü ändern und als Lernbeispiel ablegen."""
+    from pdfblack.core import lerndatei
+    from pdfblack.core.models import Category, Finding
+
+    monkeypatch.setattr(lerndatei, "DATEI", tmp_path / "lerndatei.jsonl")
+    finding = Finding(
+        text="Muster AG",
+        category=Category.COMPANY,
+        page=0,
+        rects=[(10.0, 20.0, 80.0, 34.0)],
+        source="KI (Presidio) · LOCATION",
+        entity="LOCATION",
+        score=0.8,
+        uid=1,
+    )
+    window._findings = [finding]
+    window._next_uid = 2
+    window._sync_findings()
+    qt_app.processEvents()
+
+    panel = window.findings_panel
+    menu = panel._menu_for(0)
+    assert menu is not None
+    texte = [aktion.text() for aktion in menu.actions()]
+    assert "Person" in texte and "Adresse" in texte
+    assert "Kein Treffer (Fehlalarm)" in texte
+    firma = next(aktion for aktion in menu.actions() if aktion.text() == "Firma")
+    assert firma.isChecked(), "die aktuelle Kategorie ist angehakt"
+    menu.deleteLater()
+
+    panel.categoryChanged.emit(1, Category.PERSON, False)
+    qt_app.processEvents()
+    assert finding.category is Category.PERSON
+    assert "vom Benutzer korrigiert" in finding.source
+    beispiele = lerndatei.eintraege()
+    assert beispiele[-1]["kategorie_vorher"] == "Firma"
+    assert beispiele[-1]["kategorie_nachher"] == "Person"
+    assert beispiele[-1]["gleichnamige_treffer"] == 1
+
+    panel.falsePositiveRequested.emit(1, False)
+    qt_app.processEvents()
+    assert finding.enabled is False
+    assert lerndatei.eintraege()[-1]["kategorie_nachher"] == "kein Treffer"
+    assert lerndatei.eintraege()[-1]["kategorie_vorher"] == "Person"
+
+
+def test_kategorie_gilt_auf_wunsch_fuer_alle_gleichen(window, qt_app, tmp_path, monkeypatch):
+    """Rechtsklick auf einen von 15 gleichen Treffern ändert alle auf einmal."""
+    from pdfblack.core import lerndatei
+    from pdfblack.core.models import Category, Finding
+
+    monkeypatch.setattr(lerndatei, "DATEI", tmp_path / "lerndatei.jsonl")
+    treffer = [
+        Finding(
+            text="Fachmessen",
+            category=Category.POSTAL,
+            page=seite,
+            rects=[(10.0, 20.0, 80.0, 34.0)],
+            source="KI (Presidio) · LOCATION",
+            entity="LOCATION",
+            score=0.6,
+            uid=seite + 1,
+        )
+        for seite in range(3)
+    ]
+    window._findings = list(treffer)
+    window._next_uid = 10
+    window._sync_findings()
+    qt_app.processEvents()
+
+    panel = window.findings_panel
+    menu = panel._menu_for(0)
+    assert menu is not None
+    texte = [aktion.text() for aktion in menu.actions()]
+    assert any("als Fehlalarm abhaken" in text for text in texte)
+    untermenue = next(
+        aktion.menu() for aktion in menu.actions() if aktion.menu() is not None
+    )
+    assert [aktion.data() for aktion in untermenue.actions()][0] == "alle:Person"
+    menu.deleteLater()
+
+    panel.categoryChanged.emit(1, Category.PERSON, True)
+    qt_app.processEvents()
+    assert {finding.category for finding in treffer} == {Category.PERSON}
+    assert lerndatei.eintraege()[-1]["gleichnamige_treffer"] == 3
+
+    panel.falsePositiveRequested.emit(1, True)
+    qt_app.processEvents()
+    assert not any(finding.enabled for finding in treffer)
+    assert lerndatei.eintraege()[-1]["kategorie_nachher"] == "kein Treffer"
+    assert lerndatei.eintraege()[-1]["gleichnamige_treffer"] == 3
+
+
+def test_status_nennt_die_wirkung_der_lerndatei(window, qt_app):
+    """Die Statuszeile sagt, was die Lerndatei abgehakt und umkategorisiert hat."""
+    from pdfblack.core.detect import DetectionResult
+    from pdfblack.core.models import Category, Finding
+
+    treffer = Finding(
+        text="4711-2233",
+        category=Category.ID,
+        page=0,
+        rects=[(1.0, 2.0, 3.0, 4.0)],
+        enabled=False,
+        uid=1,
+    )
+    window._on_detection_done(
+        DetectionResult([treffer], [], learned_off=1, learned_changed=2)
+    )
+
+    text = window.statusBar().currentMessage()
+    assert "1 abgehakt" in text
+    assert "2 umkategorisiert" in text
+
+
+def test_lerndatei_zuruecksetzen_fragt_nach(window, qt_app, tmp_path, monkeypatch):
+    """Zurücksetzen nur nach Bestätigung; der Menüeintrag ist vorhanden."""
+    from pdfblack.core import lerndatei
+    from pdfblack.core.models import Category, Finding
+    from pdfblack.ui import main_window as mw
+
+    class _FakeBox:
+        """Ersetzt QMessageBox im Test - es darf kein Dialog aufgehen."""
+
+        Yes, No = True, False
+        antwort = False
+        gemeldet: list[str] = []
+
+        @classmethod
+        def question(cls, *args, **kwargs):
+            return cls.antwort
+
+        @classmethod
+        def information(cls, *args, **kwargs):
+            cls.gemeldet.append(str(args[2]) if len(args) > 2 else "")
+
+        @classmethod
+        def critical(cls, *args, **kwargs):
+            cls.gemeldet.append(str(args[2]) if len(args) > 2 else "")
+
+    monkeypatch.setattr(lerndatei, "DATEI", tmp_path / "lerndatei.jsonl")
+    monkeypatch.setattr(mw, "QMessageBox", _FakeBox)
+    lerndatei.merken(
+        lerndatei.korrektur(
+            Finding(text="4711-2233", category=Category.ID, page=0, uid=1),
+            "",
+            Category.ID,
+            Category.PERSON,
+        )
+    )
+    assert lerndatei.eintraege()
+
+    # Abbrechen laesst die gelernten Beispiele stehen.
+    _FakeBox.antwort = _FakeBox.No
+    window._reset_lerndatei()
+    assert lerndatei.eintraege()
+
+    # Zustimmen verwirft sie.
+    _FakeBox.antwort = _FakeBox.Yes
+    window._reset_lerndatei()
+    assert lerndatei.eintraege() == []
+
+    texte = [
+        aktion.text()
+        for menue in window.menuBar().findChildren(QtWidgets.QMenu)
+        for aktion in menue.actions()
+    ]
+    assert "Lerndatei zurücksetzen …" in texte
+    assert "Lerndatei herunterladen …" in texte
+    assert "Lerndatei ansehen …" in texte
+
+
+def test_menue_oeffnet_das_lernfenster(window, qt_app, monkeypatch):
+    """„Lerndatei ansehen …“ öffnet das Fenster; ohne Löschung passiert nichts."""
+    from pdfblack.ui import main_window as mw
+
+    aufgerufen: list[object] = []
+
+    class _FakeFenster:
+        geloescht = 0
+
+        def __init__(self, parent=None):
+            aufgerufen.append(parent)
+
+        def exec(self):
+            aufgerufen.append("exec")
+            return 0
+
+    monkeypatch.setattr(mw, "Lernfenster", _FakeFenster)
+    window._show_lerndatei()
+
+    assert aufgerufen[0] is window
+    assert aufgerufen[1] == "exec"
+    assert len(aufgerufen) == 2, "ohne Löschung wird keine Erkennung gestartet"
+
+
+def test_lernfenster_zeigt_und_loescht_einzelne_beispiele(
+    qt_app, tmp_path, monkeypatch
+):
+    """Das Fenster listet die Beispiele und löscht nur die markierten."""
+    from pdfblack.core import lerndatei
+    from pdfblack.core.models import Category, Finding
+    from pdfblack.ui.lernfenster import Lernfenster
+
+    monkeypatch.setattr(lerndatei, "DATEI", tmp_path / "lerndatei.jsonl")
+    lerndatei.merken(
+        lerndatei.korrektur(
+            Finding(text="Fachmessen", category=Category.POSTAL, page=0, uid=1),
+            "Die Fachmessen 2026 in Zuerich",
+            Category.POSTAL,
+            Category.PERSON,
+        )
+    )
+    lerndatei.merken(
+        lerndatei.korrektur(
+            Finding(text="Muster AG", category=Category.COMPANY, page=0, uid=2),
+            "",
+            Category.COMPANY,
+            None,
+        )
+    )
+
+    fenster = Lernfenster()
+    assert fenster.table.rowCount() == 2
+    assert [fenster.table.item(zeile, 0).text() for zeile in range(2)] == [
+        "Fachmessen",
+        "Muster AG",
+    ]
+    assert fenster.table.item(0, 1).text() == "PLZ / Ort"
+    assert fenster.table.item(0, 2).text() == "Person"
+    assert fenster.table.item(1, 2).text() == "kein Treffer"
+    assert fenster.table.item(0, 0).toolTip().startswith("Seite 1")
+    assert fenster.btn_delete.isEnabled() is False
+
+    fenster.table.selectRow(0)
+    qt_app.processEvents()
+    assert fenster.btn_delete.isEnabled()
+    assert fenster.loeschen() == 1
+    assert fenster.geloescht == 1
+    assert fenster.table.rowCount() == 1
+    assert [eintrag["text"] for eintrag in lerndatei.eintraege()] == ["Muster AG"]
+    fenster.close()

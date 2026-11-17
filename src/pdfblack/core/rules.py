@@ -13,8 +13,16 @@ from dataclasses import dataclass
 from datetime import date
 
 from . import berufe as berufs_liste
-from . import geburtsdatum as geburtsdatum_liste
 from . import plz as plz_liste
+from .geburtsdatum import (
+    JAHR_LANG_MUSTER,
+    JAHR_MUSTER,
+    LUECKE,
+    MONAT_MUSTER,
+    MONATNAMEN,
+    TAG_MUSTER,
+    ZAHL_MUSTER,
+)
 from .models import Category
 
 
@@ -255,19 +263,39 @@ def _plz_gueltig(text: str) -> bool:
         ort = text[: text.find(plz)].strip(" \t\n")
     return bool(ort) and plz_liste.is_place(plz, ort)
 
-_DAY = r"(?:0?[1-9]|[12]\d|3[01])"
-_MONTH = r"(?:0?[1-9]|1[0-2])"
-_YEAR = r"(?:19|20)\d{2}"
-_DATE_DOTTED = rf"{_DAY}[./]{_MONTH}[./](?:{_YEAR}|\d{{2}})"
-_DATE_ISO = rf"{_YEAR}-{_MONTH}-{_DAY}"
+# Datumsangaben: Tag/Monat/Jahr (20.10.2026, 3. 12 1985, 12/03/1985,
+# 12-3-85, 05/31/1990), Jahr zuerst (2026-10-20), Monatsnamen
+# (20. Oktober 2026) und Monat/Jahr ohne Tag (10/2025, März 1985). Die
+# Bausteine kommen aus geburtsdatum.py, damit Lesen und Erkennen dieselben
+# Muster verwenden.
+_DATE_DOTTED = (
+    rf"{TAG_MUSTER}{LUECKE}\.{LUECKE}{MONAT_MUSTER}{LUECKE}\.?{LUECKE}{JAHR_MUSTER}"
+)
+_DATE_STRICH = (
+    rf"{TAG_MUSTER}{LUECKE}[/\-]{LUECKE}{ZAHL_MUSTER}{LUECKE}[/\-]{LUECKE}"
+    rf"{JAHR_MUSTER}"
+)
+_DATE_ISO = (
+    rf"{JAHR_LANG_MUSTER}{LUECKE}[-./]{LUECKE}{MONAT_MUSTER}{LUECKE}[-./]{LUECKE}"
+    rf"{TAG_MUSTER}"
+)
 # 20. Oktober 2026, 3. März 85 - Monatsnamen stehen in Bewerbungen oft
 # statt der Zahlenform.
-_MONATNAMEN = "|".join(
-    sorted(geburtsdatum_liste.MONATE, key=len, reverse=True)
-)
 _DATE_WORT = (
-    rf"(?<![\d\w.])\d{{1,2}}\.?[ \t]*(?:{_MONATNAMEN})\.?[ \t]*"
-    rf"(?:{_YEAR}|\d{{2}})(?![\d\w])"
+    rf"(?<![\d\w]){TAG_MUSTER}{LUECKE}\.?{LUECKE}(?:{MONATNAMEN})\.?"
+    rf"{LUECKE},?{LUECKE}{JAHR_MUSTER}(?![\d\w])"
+)
+# Monat/Jahr ohne Tag: 10/2025, 1/85, 03-2025, 03.1985 und März 1985. Der
+# Punkt gilt nur mit vierstelligem Jahr, damit ein Preis wie "12.34" kein
+# Datum wird.
+_DATE_MONTH = (
+    rf"(?:(?<![\d\w./\-]){MONAT_MUSTER}{LUECKE}"
+    rf"(?:[/\-]{LUECKE}{JAHR_MUSTER}|\.{LUECKE}{JAHR_LANG_MUSTER})"
+    rf"(?![\d\w]|[./\-]{LUECKE}\d)"
+    rf"|(?<![\d\w])(?:{MONATNAMEN})\.?{LUECKE}{JAHR_MUSTER}(?![\d\w]))"
+)
+_DATE_ANY = (
+    rf"(?:{_DATE_ISO}|{_DATE_WORT}|{_DATE_DOTTED}|{_DATE_STRICH}|{_DATE_MONTH})"
 )
 
 _ID_SUFFIX = r"[. \t-]{0,2}(?:nummer|nr\.?|identifikationsnummer|id|zeichen|kennzeichen)"
@@ -439,7 +467,10 @@ RULES: tuple[Rule, ...] = (
         label="Geburtsdatum",
         group="date",
         category=Category.DATE,
-        pattern=r"(?:Geburtsdatum|Geburtstag|geb\.|geboren[ \t]+am)[ \t]*:?[ \t]*\d{1,2}\.[ \t]?\d{1,2}\.[ \t]?\d{2,4}",
+        pattern=(
+            rf"(?:Geburtsdatum|Geburtstag|geb\.|geboren[ \t]+am)[ \t]*:?[ \t]*"
+            rf"{_DATE_ANY}"
+        ),
     ),
     Rule(
         key="date",
@@ -447,10 +478,12 @@ RULES: tuple[Rule, ...] = (
         group="date",
         category=Category.DATE,
         pattern=(
-            # 20.10.2026, 20.10.26, 20. 10. 2026, ISO 2026-10-20 und
-            # 20. Oktober 2026. Bewusst auch ohne Beschriftung: Datumsangaben
-            # stehen in Kopfzeilen und Tabellen meist ohne "Datum:" davor.
-            rf"(?<![\d\w.])(?:{_DATE_ISO}|{_DATE_WORT}|{_DATE_DOTTED})(?!\d)"
+            # 20.10.2026, 20.10.26, 20. 10. 2026, 3. 12 1985, 12/03/1985,
+            # 12-3-85, ISO 2026-10-20, 20. Oktober 2026 und Monat/Jahr wie
+            # 10/2025 oder Maerz 1985. Bewusst auch ohne Beschriftung:
+            # Datumsangaben stehen in Kopfzeilen und Tabellen meist ohne
+            # "Datum:" davor.
+            rf"(?<![\d\w]){_DATE_ANY}(?![\d\w])"
         ),
     ),
 )

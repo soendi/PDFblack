@@ -1,3 +1,19 @@
+## PDFblack 1.3.12
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.12
+
+- **PDFblack lernt aus Korrekturen:** Rechtsklick auf einen Treffer öffnet die Kategorieliste – alle Kategorien aus den Gruppen, ohne „Manuell“ und „Regex“. Die Wahl gilt sofort, steht danach in der Quelle („KI (Presidio) · LOCATION · gelernt: Person“) und wird als Beispiel gespeichert; beim nächsten Durchlauf ordnet PDFblack denselben Text von selbst so ein. Auf Wunsch gilt die Korrektur für **alle Treffer mit demselben Text** – ein Eintrag im Kontextmenü, ein Klick.
+- **Fehlalarme beibringen:** „Als Fehlalarm melden“ nimmt einen Treffer aus den Schwärzungen, lässt ihn aber in der Liste stehen, damit die Entscheidung nachvollziehbar bleibt. Auch das gilt auf Wunsch für alle gleichen Textes. Manuell gesetzte Werte und eigene Regexe bleiben unangetastet.
+- **Lerndatei im Datei-Menü:** „Lerndatei herunterladen …“ speichert alle Beispiele als JSONL-Datei für die Weiterentwicklung. „Lerndatei ansehen …“ zeigt sie in einem Fenster mit Text, alter und neuer Kategorie, Zeitpunkt sowie Seite und Quelle im Tooltip; markierte Zeilen lassen sich einzeln löschen, die übrigen Regeln bleiben. „Lerndatei zurücksetzen …“ verwirft nach Rückfrage alles.
+- **Die Lerndatei bleibt erhalten:** Sie liegt unter `%USERPROFILE%\PDFblack\lerndatei.jsonl`, und das Aufräumen beim Beenden betrifft nur den Ordner `Geschwärt` – Gelerntes überlebt also jeden Programmstart.
+- **Statuszeile zählt mit:** Nach jedem Durchlauf steht dort, wie viele Treffer die Lerndatei abgehakt und wie viele sie umkategorisiert hat.
+- **Gelerntes wird zu festen Regeln:** `python tools/lerndatei_regeln.py <Lerndatei>` wertet die exportierten Beispiele aus und schreibt mit `--schreiben` die tauglichen Muster nach `core/gelernt.py` – sie greifen danach ohne Lerndatei. Mehrfach belegte Muster werden verallgemeinert (`IAO-4711` und `IAO-2233` ergeben `IAO-\d+`), Fehlalarme werden ausgeschlossen, Einzelfälle nur auf Wunsch wörtlich übernommen. Was offen bleibt – nur Ziffern, zu kurze Texte, widersprüchliche Beispiele, manuell Eingegebenes – steht im Bericht und im Lernfenster in der Spalte „im Code“ als „–“.
+- **Datumsangaben in allen üblichen Schreibweisen:** Erkannt werden jetzt `12.03.1985`, `12.3.85`, `3. 12 1985`, `12. 03. 1985`, `12/03/1985`, `5/2/90`, `12-3-85`, `05/31/1990` (Monat vorn, wenn die zweite Zahl kein Tag sein kann), `12. März 1985`, `3. März 85`, `3. Sept. 1999`, `1985-03-12` und `1985.03.12` – dazu die Schreibweisen `März`, `Maerz`, `Marz` und `Jänner`/`Jaenner`. Lesen und Erkennen nutzen dieselben Muster, ein Format kann also nicht mehr nur an einer Stelle dazukommen.
+- **Monat/Jahr ist kein Geburtsdatum:** `10/2025`, `1/85`, `03.1985` und „März 1985“ dienen nur noch als Vergleichsdatum – sonst würde jede Nummer wie `12/34` zum Datum. Bei fehlendem Tag entscheidet weiterhin der Mindestabstand von 15 Jahren.
+- **Arbeitsdateien der Texterkennung werden beim Beenden gelöscht:** Nach dem Neuaufbau einer Textebene und dem Auslesen eines Scans bleiben im temporären Ordner keine PDFs mehr liegen; die geöffnete Datei wird erst entfernt, nachdem das Dokument geschlossen ist.
+
 ## PDFblack 1.3.11
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -213,13 +229,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.11-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.12-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 135 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 179 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate und die Geburtsdatums-Regel, die Lerndatei (Korrekturen, Fehlalarme, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

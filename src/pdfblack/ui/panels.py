@@ -49,6 +49,15 @@ CATEGORY_GROUPS: dict[Category, str] = {
     Category.OTHER: "Sonstiges",
 }
 
+# Kategorien, die der Benutzer im Kontextmenü wählen kann: alle aus
+# CATEGORY_GROUPS ausser "Manuell" und "Regex" - das sind Herkünfte, keine
+# inhaltlichen Einordnungen.
+WAHL_KATEGORIEN: tuple[Category, ...] = tuple(
+    category
+    for category in CATEGORY_GROUPS
+    if category not in (Category.MANUAL, Category.REGEX)
+)
+
 SENSITIVITY = (
     ("Streng (weniger Treffer)", 0.65),
     ("Ausgewogen", 0.45),
@@ -547,6 +556,10 @@ class FindingsPanel(QFrame):
     findingSelected = Signal(int)
     selectAllRequested = Signal(bool)
     removeRequested = Signal()
+    # Korrektur der Kategorie (uid, Category, alle gleichen Texte) bzw.
+    # Fehlalarm (uid, alle gleichen Texte).
+    categoryChanged = Signal(int, object, bool)
+    falsePositiveRequested = Signal(int, bool)
 
     COL_CHECK, COL_CATEGORY, COL_TEXT, COL_PAGE = 0, 1, 2, 3
 
@@ -626,8 +639,10 @@ class FindingsPanel(QFrame):
         layout.addWidget(
             _hint(
                 "Klick auf eine Zeile springt zur Stelle. Häkchen entfernen = nicht "
-                "schwärzen. Doppelklick oder Rechtsklick schaltet alle Treffer mit "
-                "demselben Namen um."
+                "schwärzen. Doppelklick schaltet alle Treffer mit demselben Namen "
+                "um; Rechtsklick ändert die Kategorie und merkt sich das als "
+                "Lernbeispiel – auf Wunsch gleich für alle Treffer mit demselben "
+                "Text."
             )
         )
 
@@ -817,25 +832,85 @@ class FindingsPanel(QFrame):
         self.set_many_enabled(uids, enabled)
         return len(uids)
 
+    def _uid_of(self, row: int) -> int | None:
+        """Die Kennung des Treffers in dieser Zeile."""
+        item = self.table.item(row, self.COL_CHECK)
+        if item is None:
+            return None
+        uid = item.data(Qt.UserRole)
+        return uid if isinstance(uid, int) else None
+
+    def _menu_for(self, row: int) -> QMenu | None:
+        """Kontextmenü einer Zeile: Kategorie ändern, Fehlalarm, Umschalten.
+
+        Die gewählte Aktion trägt ihr Ziel in ``data()``: ``"einer:<Kategorie>"``
+        für diesen Treffer, ``"alle:<Kategorie>"`` für alle Treffer mit
+        demselben Text, ``"fehlalarm"``, ``"alle-fehlalarm"`` oder
+        ``"umschalten"``.
+        """
+        text_item = self.table.item(row, self.COL_TEXT)
+        if text_item is None or self._uid_of(row) is None:
+            return None
+        aktuell = self.table.item(row, self.COL_CATEGORY)
+        menu = QMenu(self)
+        kopf = menu.addAction("Diesen Treffer einordnen:")
+        kopf.setEnabled(False)
+        for category in WAHL_KATEGORIEN:
+            aktion = menu.addAction(category.value)
+            aktion.setCheckable(True)
+            aktion.setChecked(aktuell is not None and aktuell.text() == category.value)
+            aktion.setData(f"einer:{category.value}")
+        menu.addSeparator()
+        fehlalarm = menu.addAction("Kein Treffer (Fehlalarm)")
+        fehlalarm.setData("fehlalarm")
+        anzahl = len(self.same_text_uids(text_item.text()))
+        if anzahl >= 2:
+            menu.addSeparator()
+            kopf_alle = menu.addAction(
+                f"Für alle {anzahl} Treffer mit „{text_item.text()}“:"
+            )
+            kopf_alle.setEnabled(False)
+            unter = menu.addMenu("Kategorie für alle ändern")
+            for category in WAHL_KATEGORIEN:
+                aktion = unter.addAction(category.value)
+                aktion.setData(f"alle:{category.value}")
+            alle_fehlalarm = menu.addAction(
+                f"Alle {anzahl} als Fehlalarm abhaken"
+            )
+            alle_fehlalarm.setData("alle-fehlalarm")
+            umschalten = menu.addAction(
+                f"Alle „{text_item.text()}“ umschalten ({anzahl})"
+            )
+            umschalten.setData("umschalten")
+        return menu
+
     def _show_menu(self, pos) -> None:
         """Kontextmenü der Trefferliste."""
         item = self.table.itemAt(pos)
         if item is None:
             return
         row = item.row()
-        text_item = self.table.item(row, self.COL_TEXT)
-        if text_item is None:
+        menu = self._menu_for(row)
+        if menu is None:
             return
-        anzahl = len(self.same_text_uids(text_item.text()))
-        if anzahl < 2:
-            return
-        menu = QMenu(self)
-        umschalten = menu.addAction(
-            f"Alle „{text_item.text()}“ umschalten ({anzahl})"
-        )
         gewaehlt = menu.exec(self.table.viewport().mapToGlobal(pos))
-        if gewaehlt is umschalten:
+        if gewaehlt is None:
+            return
+        ziel = str(gewaehlt.data() or "")
+        if ziel == "umschalten":
             self.toggle_same_text(row)
+            return
+        uid = self._uid_of(row)
+        if uid is None:
+            return
+        if ziel in ("fehlalarm", "alle-fehlalarm"):
+            self.falsePositiveRequested.emit(uid, ziel == "alle-fehlalarm")
+            return
+        bereich, _, wert = ziel.partition(":")
+        for category in WAHL_KATEGORIEN:
+            if category.value == wert:
+                self.categoryChanged.emit(uid, category, bereich == "alle")
+                return
 
     def selected_uids(self) -> list[int]:
         uids: list[int] = []
