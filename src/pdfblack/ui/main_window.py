@@ -515,6 +515,10 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self._path: str | None = None
+        # Ergebnis der automatisch angestossenen Texterkennung gleich laden?
+        self._auto_open_ocr = False
+        # Datei aus PDFocr: sie hat ihre Textebene schon - nicht erneut auslesen.
+        self._ocr_result_path: str | None = None
         self._rebuild_source: tuple[str, str | None] | None = None
         self._password: str | None = None
         self._findings: list[Finding] = []
@@ -695,6 +699,7 @@ class MainWindow(QMainWindow):
         view = OcrView()
         view.message.connect(lambda text: self.statusBar().showMessage(text, 12000))
         view.openInBlackRequested.connect(self.load_pdf)
+        view.resultReady.connect(self._on_ocr_result)
         return view
 
     def _show_compare_message(self, text: str) -> None:
@@ -703,6 +708,9 @@ class MainWindow(QMainWindow):
 
     def _show_program(self, program: str) -> None:
         """Zwischen PDFblack, PDFcompare und PDFocr umschalten."""
+        if program == "pdfocr":
+            # Wer PDFocr von Hand öffnet, will das Ergebnis selbst übernehmen.
+            self._auto_open_ocr = False
         if program == self._program:
             return
         self._program = program
@@ -872,6 +880,8 @@ class MainWindow(QMainWindow):
     def load_pdf(self, path: str) -> None:
         if self._busy:
             return
+        # Ein manuell geoeffnetes Dokument beendet die OCR-Automatik.
+        self._auto_open_ocr = False
         if self._program != "pdfblack":
             self._show_program("pdfblack")
         password: str | None = None
@@ -926,7 +936,10 @@ class MainWindow(QMainWindow):
         # Text auslesen und unsichtbar hinter das Bild legen, damit die Datei
         # anschliessend geschwaerzt werden kann.
         try:
-            ohne_text = not ocr_core.has_text(path, password)
+            ohne_text = (
+                not ocr_core.has_text(path, password)
+                and path != self._ocr_result_path
+            )
         except Exception:  # noqa: BLE001 - besser in PDFblack bleiben als abbrechen
             ohne_text = False
         if ohne_text:
@@ -934,6 +947,9 @@ class MainWindow(QMainWindow):
             self.rebuild_bar.hide()
             self.ocr_view.open_path(path, password, start=True)
             self._show_program("pdfocr")
+            # Sobald die Erkennung fertig ist, landet das Ergebnis von selbst
+            # in PDFblack (wie der Knopf „In PDFblack öffnen“).
+            self._auto_open_ocr = True
             self.statusBar().showMessage(
                 "Kein Text zum Schwärzen – PDFocr liest den Scan aus.", 12000
             )
@@ -941,6 +957,21 @@ class MainWindow(QMainWindow):
             self._offer_rebuild(path, password)
             # Ohne Klick: die Prüfung laeuft direkt nach dem Oeffnen an.
             self._auto_detect()
+
+    def _on_ocr_result(self, path: str) -> None:
+        """Fertige Texterkennung: Ergebnis gleich in PDFblack laden.
+
+        Nur wenn die Erkennung von PDFblack selbst angestoßen wurde - wer in
+        PDFocr von Hand arbeitet, entscheidet weiter selbst.
+        """
+        if not self._auto_open_ocr:
+            return
+        self._auto_open_ocr = False
+        if not path or not os.path.isfile(path):
+            return
+        self._ocr_result_path = path
+        self.statusBar().showMessage("Texterkennung fertig – PDFblack prüft den Scan.")
+        self.load_pdf(path)
 
     def _offer_rebuild(self, path: str, password: str | None) -> None:
         """PDF mit Textebene: Neuaufbau per OCR anbieten."""

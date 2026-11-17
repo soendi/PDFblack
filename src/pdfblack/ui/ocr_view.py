@@ -96,6 +96,8 @@ class OcrView(QWidget):
 
     message = Signal(str)
     openInBlackRequested = Signal(str)
+    # Eine Erkennung ist fertig; meldet den Pfad der neuen Datei.
+    resultReady = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -320,10 +322,14 @@ class OcrView(QWidget):
             return
         if self._temp_dir is None:
             self._temp_dir = tempfile.mkdtemp(prefix="pdfblack-ocr-")
-        ziel = str(
-            Path(self._temp_dir)
-            / f"{Path(self._path).stem}_{'neu' if self._ersetze else 'ocr'}.pdf"
+        # Jeder Lauf bekommt eine eigene Datei: das Ergebnis kann bereits in
+        # PDFblack geoeffnet sein, waehrend die naechste Erkennung laeuft.
+        handle, ziel = tempfile.mkstemp(
+            prefix=f"{Path(self._path).stem}_{'neu' if self._ersetze else 'ocr'}-",
+            suffix=".pdf",
+            dir=self._temp_dir,
         )
+        os.close(handle)
         self._target_path = ziel
         self.progress.setRange(0, 0)
         self.progress.show()
@@ -383,6 +389,7 @@ class OcrView(QWidget):
             )
         self.message.emit(meldung)
         self._refresh()
+        self.resultReady.emit(self._result_path)
 
     def _on_failed(self, meldung: str) -> None:
         self.status_label.setText("Erkennung fehlgeschlagen.")

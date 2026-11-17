@@ -1,3 +1,13 @@
+## PDFblack 1.3.9
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.9
+
+- **Der ausgelesene Scan steht von selbst in PDFblack:** Wird eine PDF ohne Textebene geöffnet, wechselt PDFblack wie bisher zu PDFocr und startet die Erkennung. Ist sie fertig, lädt PDFblack das Ergebnis jetzt selbst – genau wie ein Klick auf „In PDFblack öffnen“: Der Scan ist samt neuer Textebene geladen, und die Prüfung beginnt sofort mit Namen, Adressen, Nummern und Regexen. Der Knopf bleibt für den Fall, dass man das Ergebnis später noch einmal holen will.
+- **Handarbeit in PDFocr bleibt Handarbeit:** Nur die von PDFblack angestoßene Erkennung öffnet sich von selbst. Wer PDFocr selbst öffnet oder dort eine andere Datei ausliest, entscheidet weiterhin selbst, was in PDFblack landet.
+- **Kein zweiter Durchlauf für dieselbe Datei:** Das Ergebnis einer Erkennung wird nicht noch einmal ausgelesen, auch wenn der Scan wenig Text enthält. Jeder Erkennungslauf bekommt außerdem eine eigene Arbeitsdatei, damit eine weitere Erkennung die bereits geöffnete Datei nicht überschreibt.
+
 ## PDFblack 1.3.8
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.

@@ -154,6 +154,13 @@ def test_scan_wechselt_automatisch_zu_pdfocr(window, qt_app, tmp_path, monkeypat
     assert "Dachdecker" in doc[0].get_text()
     doc.close()
 
+    # Ist die Erkennung fertig, steht der Scan von selbst in PDFblack.
+    ergebnis = window.ocr_view._result_path
+    assert _wait_until(lambda: window._path == ergebnis), "Ergebnis nicht geladen"
+    assert _wait_until(lambda: window.workspace.currentWidget() is window.black_view)
+    assert window._program == "pdfblack"
+    assert window.ocr_view._result_path == ergebnis
+
     # Eine Datei mit Text bleibt in PDFblack.
     text_pdf = tmp_path / "text.pdf"
     doc = pymupdf.open()
