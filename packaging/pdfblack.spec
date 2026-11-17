@@ -32,6 +32,9 @@ for package in (
     "phonenumbers",
     "tldextract",
     "spellchecker",
+    # Tesseract samt Leptonica als Bibliotheken - die Texterkennung steckt
+    # damit im Programm und braucht keine Installation.
+    "tesserocr",
 ):
     try:
         pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
@@ -46,12 +49,17 @@ for package in (
 datas += [
     (str(SRC / "pdfblack" / "data" / "plz_ch.json"), "pdfblack/data"),
     (str(SRC / "pdfblack" / "data" / "berufe.json"), "pdfblack/data"),
-    # Deutsches Sprachmodell fuer Tesseract (tessdata_fast, Apache-2.0).
-    (
-        str(SRC / "pdfblack" / "data" / "tessdata" / "deu.traineddata"),
-        "pdfblack/data/tessdata",
-    ),
 ]
+
+# Sprachdateien fuer die eingebaute Texterkennung (tessdata_fast, Apache-2.0).
+# Fehlt eine Datei, laesst sich die Sprache nicht waehlen.
+tessdata_ordner = SRC / "pdfblack" / "data" / "tessdata"
+sprachdateien = sorted(tessdata_ordner.glob("*.traineddata"))
+if not sprachdateien:
+    raise SystemExit(
+        "Keine Sprachdateien unter src/pdfblack/data/tessdata gefunden."
+    )
+datas += [(str(datei), "pdfblack/data/tessdata") for datei in sprachdateien]
 
 hiddenimports += collect_submodules("presidio_analyzer.predefined_recognizers")
 hiddenimports += ["spacy.lang.de", "spacy.lang.en", "yaml"]

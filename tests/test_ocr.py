@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 import pymupdf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -203,34 +205,70 @@ def test_textebene_wird_verworfen_und_neu_aufgesetzt(tmp_path):
     doc.close()
 
 
-def test_tesseract_bekommt_tsv_als_option(tmp_path, monkeypatch):
-    """Kein "tsv"-Argument: der mitgelieferte Sprachordner hat keine configs/.
-
-    Tesseract liest ein abschliessendes "tsv" als Konfigurationsdatei aus dem
-    tessdata-Ordner und bricht sonst mit "read_params_file: Can't open tsv" ab.
-    """
+def test_eingebaute_erkennung_liest_woerter():
+    """Tesseract steckt im Programm - ohne CLI und ohne Installation."""
     from pdfblack.core import ocr
 
-    programm = tmp_path / "tesseract"
-    programm.write_text("", encoding="utf-8")
-    aufrufe: list[list[str]] = []
+    if not ocr.eingebaut():
+        pytest.skip("tesserocr fehlt (siehe requirements.txt)")
 
-    class Ergebnis:
-        returncode = 0
-        stderr = b""
+    engine = ocr.TesserocrEngine(language="deu")
+    assert engine.available()
+    assert engine.tessdata_dir() == ocr.TESSDATA
 
-    def fake_run(befehl, **kwargs):
-        aufrufe.append(befehl)
-        Path(befehl[2]).with_suffix(".tsv").write_text(
-            "level\tpage_num\n5\t1\n", encoding="utf-8"
-        )
-        return Ergebnis()
+    quelle = pymupdf.open()
+    page = quelle.new_page(width=595, height=842)
+    page.insert_text(
+        (60, 120), "Personalnummer: 4711-2233", fontsize=12, fontname="helv"
+    )
+    png, breite, hoehe = ocr.render_page(page)
+    quelle.close()
 
-    monkeypatch.setattr(ocr.subprocess, "run", fake_run)
-    engine = ocr.TesseractEngine(language="deu", path=str(programm))
-    assert engine.read_words(b"png", (10, 10)) == []
+    woerter = engine.read_words(png, (breite, hoehe))
+    text = " ".join(wort.text for wort in woerter)
+    assert "4711-2233" in text, text
+    assert all(0.0 <= wort.confidence <= 1.0 for wort in woerter)
 
-    befehl = aufrufe[0]
-    assert "tsv" not in befehl
-    assert befehl[befehl.index("-c") + 1] == "tessedit_create_tsv=1"
-    assert befehl[befehl.index("--tessdata-dir") + 1] == str(ocr.TESSDATA)
+
+def test_fehlende_sprache_wird_gemeldet():
+    from pdfblack.core import ocr
+
+    engine = ocr.TesserocrEngine(language="jpn")
+    assert not engine.available()
+    assert "jpn" in engine.fehlt()
+    try:
+        engine.read_words(b"png", (10, 10))
+    except ocr.OcrError as exc:
+        assert "jpn" in str(exc)
+    else:  # pragma: no cover - darf nicht passieren
+        raise AssertionError("ohne Sprachdatei muss ein Fehler kommen")
+
+
+def test_mitgelieferte_sprachen():
+    from pdfblack.core import ocr
+
+    assert {"deu", "eng", "fra", "ita"} <= ocr.sprachen_mitgeliefert()
+
+
+def test_ocr_pdf_mit_eingebauter_erkennung(tmp_path):
+    """Der ganze PDFocr-Weg mit dem echten, eingebauten Tesseract."""
+    from pdfblack.core import ocr
+
+    if not ocr.eingebaut():
+        pytest.skip("tesserocr fehlt (siehe requirements.txt)")
+
+    scan = tmp_path / "scan.pdf"
+    _scan_pdf(scan, "Personalnummer: 4711-2233", size=14.0)
+    ziel = tmp_path / "ocr.pdf"
+    ergebnis = ocr.ocr_pdf(
+        str(scan), str(ziel), ocr.TesserocrEngine(language="deu"), rechtschreibung=False
+    )
+    assert ergebnis.pages == 1
+    assert ergebnis.words > 0
+
+    doc = pymupdf.open(str(ziel))
+    try:
+        text = doc[0].get_text()
+    finally:
+        doc.close()
+    assert "4711-2233" in text, text

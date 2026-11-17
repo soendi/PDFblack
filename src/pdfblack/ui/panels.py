@@ -564,7 +564,8 @@ class FindingsPanel(QFrame):
 
         self.stack = QStackedWidget()
         empty = QLabel(
-            "Noch keine Vorschau.\n\nDatei laden, dann „Vorschau erzeugen“."
+            "Noch keine Vorschau.\n\nDatei laden – die Prüfung startet dann "
+            "von selbst."
         )
         empty.setObjectName("Hint")
         empty.setAlignment(Qt.AlignCenter)

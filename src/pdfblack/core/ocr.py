@@ -7,22 +7,30 @@ Bild (``overlay=False``) und genau in dem Rechteck, in dem das Wort im Bild
 steht. Dadurch sitzt der Text deckungsgleich ueber dem Scan, und eine spaetere
 Schwaerzung trifft dieselbe Stelle im Bild.
 
+Tesseract steckt ueber das Paket ``tesserocr`` samt Bibliotheken im Programm,
+die Sprachdateien liegen unter ``pdfblack/data/tessdata``. Die Erkennung laeuft
+damit im eigenen Prozess: keine separate Installation, keine Adminrechte,
+kein Nachladen.
+
 Neu einlesen: ``ocr_pdf(quelle, ziel, engine)``
 """
 
 from __future__ import annotations
 
-import os
-import shutil
 import string
-import subprocess
 import tempfile
+import threading
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Protocol, Sequence
 
 import pymupdf
+
+try:  # Die Erkennung steckt im Paket; fehlt sie, bleibt nur ein Hinweis.
+    import tesserocr
+except Exception:  # noqa: BLE001 - unvollstaendige Installation
+    tesserocr = None  # type: ignore[assignment]
 
 from .extract import open_document
 from .rechtschreibung import korrigiere_wort
@@ -43,9 +51,9 @@ SPRACHEN: dict[str, str] = {
     "Deutsch + Englisch": "deu+eng",
 }
 
-# Mitgelieferte Sprachdatei (tessdata_fast, Apache-2.0). Tesseract wird immer
-# auf diesen Ordner gezeigt (--tessdata-dir): die Erkennung laeuft damit offline
-# und ohne Downloads. Eine Ausrichtungserkennung (osd) braucht PDFblack nicht.
+# Mitgelieferte Sprachdateien (tessdata_fast, Apache-2.0). Beide Engines
+# werden auf diesen Ordner gezeigt: die Erkennung laeuft damit offline und ohne
+# Downloads. Eine Ausrichtungserkennung (osd) braucht PDFblack nicht.
 TESSDATA = Path(__file__).resolve().parents[1] / "data" / "tessdata"
 
 # Zeichen, die die eingebaute Schrift (Helvetica) sicher setzen kann.
@@ -97,27 +105,6 @@ class Engine(Protocol):
     def read_words(self, png: bytes, size: tuple[int, int]) -> list[Word]: ...
 
 
-def find_tesseract() -> str | None:
-    """Pfad zu Tesseract suchen (Umgebungsvariable, PATH, Windows-Standard)."""
-    eigen = os.environ.get("PDFBLACK_TESSERACT")
-    if eigen and Path(eigen).exists():
-        return eigen
-    gefunden = shutil.which("tesseract")
-    if gefunden:
-        return gefunden
-    kandidaten = [
-        Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
-        Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
-        Path("/usr/bin/tesseract"),
-        Path("/usr/local/bin/tesseract"),
-        Path("/opt/homebrew/bin/tesseract"),
-    ]
-    for pfad in kandidaten:
-        if pfad.exists():
-            return str(pfad)
-    return None
-
-
 def sprachen_mitgeliefert() -> set[str]:
     """Welche Sprachdateien PDFblack mitbringt?"""
     try:
@@ -126,90 +113,84 @@ def sprachen_mitgeliefert() -> set[str]:
         return set()
 
 
-class TesseractEngine:
-    """Tesseract ueber die Kommandozeile, Ausgabe als TSV mit Wortrechtecken."""
+def eingebaut() -> bool:
+    """Steckt die Texterkennung in dieser Installation?"""
+    return tesserocr is not None
 
-    name = "Tesseract"
 
-    def __init__(
-        self,
-        language: str = "deu",
-        path: str | None = None,
-        tessdata: str | None = None,
-    ) -> None:
+# Eine Engine je Sprache: der Aufbau dauert einige hundert Millisekunden,
+# deshalb bleiben sie fuer weitere Seiten stehen.
+_API_LOCK = threading.Lock()
+_APIS: dict[tuple[str, str], object] = {}
+
+
+def _api(language: str, tessdata: Path):
+    """Engine fuer eine Sprache holen oder anlegen."""
+    schluessel = (language, str(tessdata))
+    api = _APIS.get(schluessel)
+    if api is None:
+        try:
+            api = tesserocr.PyTessBaseAPI(path=str(tessdata), lang=language)
+        except Exception as exc:  # noqa: BLE001 - Tesseract meldet Details
+            raise OcrError(
+                f"Die Texterkennung liess sich fuer „{language}“ nicht starten: "
+                f"{exc}"
+            ) from exc
+        _APIS[schluessel] = api
+    return api
+
+
+class TesserocrEngine:
+    """Tesseract direkt im Programm - ohne CLI, ohne Installation.
+
+    ``tesserocr`` bringt die Tesseract- und Leptonica-Bibliotheken mit, die
+    Sprachdateien liegen im Programm. Die Ausgabe ist TSV mit Wortrechtecken,
+    wie sie auch die Kommandozeile von Tesseract liefert.
+    """
+
+    name = "Tesseract (eingebaut)"
+
+    def __init__(self, language: str = "deu", tessdata: str | None = None) -> None:
         self.language = language
-        self.path = path or find_tesseract()
-        self.tessdata = tessdata
-
-    def available(self) -> bool:
-        return bool(self.path and Path(self.path).exists())
+        self._tessdata = Path(tessdata) if tessdata else None
 
     def sprachdateien(self) -> list[str]:
         return [name for name in self.language.split("+") if name]
 
-    def tessdata_dir(self) -> str | None:
-        """Mitgelieferte Sprachdateien - sonst der Standardordner von Tesseract."""
-        if self.tessdata:
-            return str(self.tessdata)
+    def tessdata_dir(self) -> Path | None:
+        """Ordner mit den mitgelieferten Sprachdateien (sonst None)."""
+        if self._tessdata is not None:
+            return self._tessdata
         if set(self.sprachdateien()) <= sprachen_mitgeliefert():
-            return str(TESSDATA)
+            return TESSDATA
         return None
+
+    def available(self) -> bool:
+        return tesserocr is not None and self.tessdata_dir() is not None
+
+    def fehlt(self) -> str:
+        """Kurze Begruendung, warum die Erkennung nicht bereit ist."""
+        if tesserocr is None:
+            return "Die eingebaute Texterkennung fehlt in dieser Installation."
+        fehlend = sorted(set(self.sprachdateien()) - sprachen_mitgeliefert())
+        return "Fuer diese Sprache fehlen die Sprachdateien: " + ", ".join(fehlend)
 
     def read_words(self, png: bytes, size: tuple[int, int]) -> list[Word]:
         if not self.available():
-            raise OcrError(
-                "Tesseract wurde nicht gefunden. Bitte Tesseract-OCR installieren "
-                "oder den Pfad in der Umgebungsvariablen PDFBLACK_TESSERACT setzen."
-            )
+            raise OcrError(self.fehlt())
+        tessdata = self.tessdata_dir()
+        if tessdata is None:  # pragma: no cover - von available() abgefangen
+            raise OcrError(self.fehlt())
         with tempfile.TemporaryDirectory(prefix="pdfblack-ocr-") as ordner:
             bild = Path(ordner) / "seite.png"
             bild.write_bytes(png)
-            basis = Path(ordner) / "seite"
-            befehl = [str(self.path), str(bild), str(basis)]
-            tessdata = self.tessdata_dir()
-            if tessdata:
-                befehl += ["--tessdata-dir", tessdata]
-            befehl += [
-                "-l",
-                self.language,
-                "--psm",
-                "3",
-                # TSV als Option statt als Konfigurationsdatei "tsv": Tesseract
-                # sucht Konfigurationsdateien im tessdata-Ordner, und der
-                # mitgelieferte enthält nur die Sprachdatei (sonst meldet
-                # Tesseract "read_params_file: Can't open tsv").
-                "-c",
-                "tessedit_create_tsv=1",
-            ]
-            try:
-                ergebnis = subprocess.run(  # noqa: S603 - fester Aufruf
-                    befehl,
-                    capture_output=True,
-                    timeout=300,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                )
-            except OSError as exc:
-                raise OcrError(f"Tesseract liess sich nicht starten: {exc}") from exc
-            except subprocess.TimeoutExpired as exc:
-                raise OcrError("Tesseract hat zu lange gebraucht.") from exc
-            datei = basis.with_suffix(".tsv")
-            if not datei.exists():
-                meldung = ergebnis.stderr.decode("utf-8", "replace").strip()
-                if (
-                    "Failed loading language" in meldung
-                    or "couldn't load any languages" in meldung
-                    or "tessdata" in meldung
-                ):
-                    raise OcrError(
-                        f"Tesseract konnte die Sprache „{self.language}“ nicht "
-                        "laden. Mitgeliefert ist Deutsch; andere Sprachen "
-                        "brauchen die passende Tesseract-Installation."
-                    )
-                raise OcrError(
-                    "Tesseract hat keine Ausgabe geliefert."
-                    + (f" Meldung: {meldung}" if meldung else "")
-                )
-            return _lies_tsv(datei.read_text(encoding="utf-8", errors="replace"))
+            with _API_LOCK:
+                api = _api(self.language, tessdata)
+                api.SetVariable("tessedit_pageseg_mode", "3")
+                api.SetVariable("user_defined_dpi", str(DPI))
+                api.SetImageFile(str(bild))
+                tsv = api.GetTSVText(0)
+        return _lies_tsv(tsv)
 
 
 def _lies_tsv(inhalt: str) -> list[Word]:
@@ -365,9 +346,10 @@ def ocr_pdf(
     Quelldatei bleibt dabei unveraendert.
     """
     if not engine.available():
+        grund = getattr(engine, "fehlt", lambda: "")()
         raise OcrError(
-            "Tesseract wurde nicht gefunden. Bitte Tesseract-OCR installieren "
-            "oder den Pfad in der Umgebungsvariablen PDFBLACK_TESSERACT setzen."
+            "Die Texterkennung ist nicht einsatzbereit."
+            + (f" {grund}" if grund else "")
         )
     if ersetze_textebene:
         with tempfile.TemporaryDirectory(prefix="pdfblack-ocr-") as ordner:

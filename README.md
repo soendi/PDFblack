@@ -1,4 +1,4 @@
-# PDFblack 1.3.6
+# PDFblack 1.3.7
 
 Vertrauliche Daten in PDF-Dateien automatisch schwärzen – mit Vorschau, Prüfung
 und echter Entfernung des Textes.
@@ -8,9 +8,10 @@ und echter Entfernung des Textes.
 ## Was PDFblack macht
 
 1. PDF laden (per Drag & Drop oder über „PDF öffnen …“).
-2. **Vorschau erzeugen**: Namen, Adressen, PLZ/Ort, Nummern, Kontaktdaten und
-   eigene Suchmuster werden gesucht und **nur farbig markiert**. Die Datei wird
-   dabei nicht verändert.
+2. Die Prüfung startet **automatisch**: Namen, Adressen, PLZ/Ort, Nummern,
+   Kontaktdaten und eigene Suchmuster werden gesucht und **nur farbig
+   markiert**. Die Datei wird dabei nicht verändert. Mit „Vorschau erzeugen“
+   lässt sich die Prüfung jederzeit erneut anstoßen.
 3. Prüfen und überarbeiten: Markierungen per Klick abwählen, eigene Bereiche
    aufziehen, Werte in den Feldern ergänzen und erneut suchen.
 4. **Neu speichern unter …**: Alle aktiven Markierungen werden geschwärzt und
@@ -121,30 +122,20 @@ neu erkannt.
 
 ### Alles lokal
 
-Rendern (PyMuPDF), Erkennung (Tesseract als lokales Programm) und
-Wörterbuch-Korrektur laufen ausschließlich auf dem Rechner – es werden keine
-Bild- oder Textdaten übertragen, und die Funktion arbeitet auch offline. Die
-neue Datei liegt bis zum Speichern in einem temporären Ordner.
+Rendern (PyMuPDF), Erkennung (Tesseract im Programm) und Wörterbuch-Korrektur
+laufen ausschließlich auf dem Rechner – es werden keine Bild- oder Textdaten
+übertragen, und die Funktion arbeitet auch offline. Die neue Datei liegt bis
+zum Speichern in einem temporären Ordner.
 
-### Voraussetzung
+### Keine Installation nötig
 
-[Tesseract-OCR](https://github.com/tesseract-ocr/tesseract) muss installiert
-sein (Windows: `tesseract-ocr`, üblicher Pfad `C:\Program Files\Tesseract-OCR`,
-wird automatisch gefunden). **PDFblack prüft das beim Start** und bietet an,
-Tesseract nachzuinstallieren, wenn es fehlt: über `winget` richtet es dann das
-Windows-Build `UB-Mannheim.TesseractOCR` still ein (Windows fragt nach der
-Freigabe). Auf anderen Systemen erscheint nur der Hinweis samt Adresse
-<https://github.com/UB-Mannheim/tesseract/wiki>. Abschalten lässt sich die
-Prüfung über die Umgebungsvariable `PDFBLACK_NO_OCR_CHECK=1`; einen anderen
-Pfad nennt `PDFBLACK_TESSERACT` (direkt auf `tesseract.exe`).
-
-**Das deutsche Sprachmodell ist im Programm enthalten:** `deu.traineddata`
-liegt in `src/pdfblack/data/tessdata` (Quelle `tessdata_fast`, Apache-2.0),
-und PDFblack startet Tesseract immer mit `--tessdata-dir` auf diesen Ordner.
-Deshalb braucht die Erkennung weder eine Sprachauswahl im Setup noch einen
-Download und funktioniert offline; eine Ausrichtungserkennung (`osd`) ist
-nicht nötig. Andere Sprachen in der Auswahlliste laufen weiterhin über die
-Sprachdateien der Tesseract-Installation.
+Tesseract und Leptonica stecken als Bibliotheken im Programm (`tesserocr`),
+die Sprachdateien liegen in `src/pdfblack/data/tessdata` (Quelle
+`tessdata_fast`, Apache-2.0). Die Erkennung läuft im eigenen Prozess: **keine
+separate Tesseract-Installation, keine Adminrechte, kein Download, keine
+Prüfung beim Start.** Mitgeliefert sind Deutsch, Englisch, Französisch und
+Italienisch – genau die Sprachen der Auswahlliste; eine
+Ausrichtungserkennung (`osd`) braucht PDFblack nicht.
 
 **Berufsbezeichnungen** stehen in einer eigenen Liste
 (`src/pdfblack/data/berufe.json`, rund 11 500 Einträge in männlicher und
@@ -265,7 +256,7 @@ Alle Varianten setzen eine virtuelle Umgebung mit den Abhängigkeiten voraus.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-# Ergebnis: dist\PDFblack-1.3.6-Setup.exe  (benötigt Inno Setup 6)
+# Ergebnis: dist\PDFblack-1.3.7-Setup.exe  (benötigt Inno Setup 6)
 ```
 
 **macOS (.app + ZIP)**
@@ -313,8 +304,10 @@ Eigener Code: MIT. Verwendete Bibliotheken:
 - **PySide6 / Qt** – LGPL-3.0.
 - **Berufsbezeichnungen** (`src/pdfblack/data/berufe.json`) – Wikidata, CC0
   (gemeinfrei); ergänzt um eine eigene Liste gängiger Berufe.
-- **Deutsches Sprachmodell** (`src/pdfblack/data/tessdata/deu.traineddata`) –
-  `tessdata_fast` aus dem Tesseract-Projekt, Apache-2.0.
+- **Tesseract und Leptonica** (`tesserocr`) – Apache-2.0 bzw. BSD-2-Clause.
+- **Sprachmodelle** (`src/pdfblack/data/tessdata/*.traineddata`, deutsch,
+  englisch, französisch, italienisch) – `tessdata_fast` aus dem
+  Tesseract-Projekt, Apache-2.0.
 - **PLZ- und Ortschaftsliste** (`src/pdfblack/data/plz_ch.json`) – amtliches
   Ortschaftenverzeichnis mit Postleitzahl von swisstopo/swisstopo.admin.ch
   (opendata.swiss, freie Nutzung, Quellenangabe erforderlich) sowie

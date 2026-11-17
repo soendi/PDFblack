@@ -63,8 +63,28 @@ def _self_test() -> int:
         assert "Königsallee" not in remaining
         assert "Schmidt-Lorenz" not in remaining
 
+        # Texterkennung: steckt im Programm und muss auch im Build laufen.
+        from .core.ocr import TesserocrEngine, render_page
+
+        engine = TesserocrEngine(language="deu")
+        assert engine.available(), engine.fehlt()
+        scan = pymupdf.open()
+        scan_page = scan.new_page(width=595, height=842)
+        scan_page.insert_text(
+            (60, 120), "Personalnummer: 4711-2233", fontsize=12, fontname="helv"
+        )
+        png, breite, hoehe = render_page(scan_page)
+        scan.close()
+        woerter = engine.read_words(png, (breite, hoehe))
+        assert any("4711" in wort.text for wort in woerter), [
+            wort.text for wort in woerter
+        ]
+
         warnings = "; ".join(result.warnings)
-        print(f"SELFTEST OK - {count} Schwaerzungen, {len(result.findings)} Treffer")
+        print(
+            f"SELFTEST OK - {count} Schwaerzungen, {len(result.findings)} Treffer, "
+            f"OCR: {len(woerter)} Woerter"
+        )
         if warnings:
             print(f"Hinweise: {warnings}")
     return 0
@@ -141,10 +161,6 @@ def main(argv: list[str] | None = None) -> int:
     # Stilles Update beim Start; abschaltbar fuer Tests und abweichende Builds.
     if "--no-update" not in argv and os.environ.get("PDFBLACK_NO_UPDATE") != "1":
         window.start_auto_update()
-
-    # Fehlt Tesseract-OCR, bietet PDFblack die Nachinstallation an.
-    if os.environ.get("PDFBLACK_NO_OCR_CHECK") != "1":
-        window.start_tesseract_check()
 
     return app.exec()
 

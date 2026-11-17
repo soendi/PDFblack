@@ -1,3 +1,14 @@
+## PDFblack 1.3.7
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.7
+
+- **Die Texterkennung steckt komplett im Programm:** Tesseract und Leptonica kommen als Bibliotheken mit (`tesserocr`), die Sprachdateien liegen in der Anwendung. PDFocr und der Neuaufbau der Textebene brauchen damit **keine Tesseract-Installation, keine Adminrechte und keinen Download** mehr – auch auf Rechnern ohne Tesseract. Die Nachinstallation über `winget` samt Prüfung beim Start ist entfallen; die Umgebungsvariablen `PDFBLACK_TESSERACT` und `PDFBLACK_NO_OCR_CHECK` gibt es nicht mehr.
+- **Alle Sprachen der Auswahlliste liegen bei:** Deutsch, Englisch, Französisch und Italienisch (`tessdata_fast`, Apache-2.0) sind enthalten. Die Erkennung läuft offline; eine Meldung über fehlende Sprachdateien kann nur noch auftreten, wenn eine Installation unvollständig ist.
+- **Die Prüfung startet beim Öffnen von selbst:** Wird eine PDF mit Textebene geladen, sucht PDFblack Namen, Adressen, PLZ/Ort, Nummern, Kontaktdaten, eigene Werte und Regexe sofort – ein Klick auf „Vorschau erzeugen“ ist nicht mehr nötig; der Knopf bleibt zum Wiederholen. Ist keine Erkennung eingeschaltet oder ein Regex fehlerhaft, erscheint nur ein Hinweis in der Statuszeile.
+- **Datenschutzhinweis angepasst:** Die einzige Netzwerkverbindung ist die Update-Prüfung – die Nachinstallation von Tesseract über `winget` entfällt.
+
 ## PDFblack 1.3.6
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.

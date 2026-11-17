@@ -31,8 +31,7 @@ from PySide6.QtWidgets import (
 
 from ..core.ocr import (
     SPRACHEN,
-    TesseractEngine,
-    find_tesseract,
+    TesserocrEngine,
     has_text,
     ocr_pdf,
 )
@@ -40,7 +39,7 @@ from ..core.ocr import (
 
 def make_engine(language: str):
     """Engine fuer die Erkennung bauen (in Tests ersetzbar)."""
-    return TesseractEngine(language=language)
+    return TesserocrEngine(language=language)
 
 
 class _OcrWorker(QThread):
@@ -297,19 +296,18 @@ class OcrView(QWidget):
 
     # -- Erkennung ----------------------------------------------------
 
-    def engine(self) -> TesseractEngine:
+    def engine(self) -> TesserocrEngine:
         return make_engine(SPRACHEN.get(self.language.currentText(), "deu"))
 
-    def check_engine(self, engine: TesseractEngine | None = None) -> bool:
+    def check_engine(self, engine: TesserocrEngine | None = None) -> bool:
         """Ist die Erkennung einsatzbereit? Zeigt sonst den Hinweis an."""
-        if (engine or self.engine()).available():
+        bereit = engine or self.engine()
+        if bereit.available():
             self.engine_hint.hide()
             return True
         self.engine_hint.setText(
-            "Tesseract wurde nicht gefunden. Bitte Tesseract-OCR installieren "
-            "(Windows: tesseract-ocr, z. B. unter "
-            "„C:\\Program Files\\Tesseract-OCR“) oder den Pfad in der "
-            "Umgebungsvariablen PDFBLACK_TESSERACT setzen."
+            "Die eingebaute Texterkennung ist nicht bereit. "
+            f"{bereit.fehlt()} Bitte PDFblack neu installieren."
         )
         self.engine_hint.show()
         return False
@@ -465,4 +463,4 @@ class OcrView(QWidget):
             self.open_path(pfad, start=True)
 
 
-__all__ = ["OcrView", "has_text", "find_tesseract", "make_engine"]
+__all__ = ["OcrView", "has_text", "make_engine"]
