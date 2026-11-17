@@ -14,6 +14,7 @@ from datetime import date
 
 from . import berufe as berufs_liste
 from . import plz as plz_liste
+from . import strassen as strassen_verzeichnis
 from .geburtsdatum import (
     JAHR_LANG_MUSTER,
     JAHR_MUSTER,
@@ -199,6 +200,35 @@ _COMPANY_STOP = frozenset(
         "heute",
         "seit",
         "bis",
+        # Monate und Zeitwoerter: "2020 - 2020" / "Jahr" und
+        # "22.04.2024" / "Mai" sind keine Firmen.
+        "jahr",
+        "jahre",
+        "jahren",
+        "monat",
+        "monate",
+        "januar",
+        "februar",
+        "märz",
+        "maerz",
+        "april",
+        "mai",
+        "juni",
+        "juli",
+        "august",
+        "september",
+        "oktober",
+        "november",
+        "dezember",
+        # Abschluesse, die unter einer Jahreszahl stehen.
+        "bachelor",
+        "bachelor professional",
+        "master",
+        "master professional",
+        "professional",
+        "fachhochschulreife",
+        "hochschulreife",
+        "mittlere reife",
     }
 )
 
@@ -211,6 +241,9 @@ def _firma_gueltig(text: str) -> bool:
         return False
     klein = name.lower().strip(" .,;:")
     if klein in _COMPANY_STOP:
+        return False
+    # "5 0080" / "DE80" ist der Anfang einer IBAN, keine Firma.
+    if re.fullmatch(r"[A-Z]{2}\d{2}", name.strip(" .,;:")):
         return False
     # "2024" / "Dachdecker" ist ein Beruf, keine Firma.
     if berufs_liste.ist_beruf(name):
@@ -285,6 +318,17 @@ _DATE_WORT = (
     rf"(?<![\d\w]){TAG_MUSTER}{LUECKE}\.?{LUECKE}(?:{MONATNAMEN})\.?"
     rf"{LUECKE},?{LUECKE}{JAHR_MUSTER}(?![\d\w])"
 )
+# Zeitraeume aus Monat/Jahr: 05/2013 - 07/2013, 08/1997 – 07/1998,
+# Maerz 2019 - Juni 2020. Ohne diese Alternative bliebe die ganze Spanne an
+# der Telefonregel haengen, die aus "05/2013 – 07/2013" eine Nummer macht.
+_DATE_MONTH_PART = (
+    rf"(?:{MONAT_MUSTER}{LUECKE}[/\-]{LUECKE}{JAHR_MUSTER}"
+    rf"|(?:{MONATNAMEN})\.?{LUECKE}{JAHR_MUSTER})"
+)
+_DATE_RANGE = (
+    rf"(?<![\d\w]){_DATE_MONTH_PART}{LUECKE}[\-\u2013\u2014]{LUECKE}"
+    rf"{_DATE_MONTH_PART}(?![\d\w])"
+)
 # Monat/Jahr ohne Tag: 10/2025, 1/85, 03-2025, 03.1985 und März 1985. Der
 # Punkt gilt nur mit vierstelligem Jahr, damit ein Preis wie "12.34" kein
 # Datum wird.
@@ -295,8 +339,19 @@ _DATE_MONTH = (
     rf"|(?<![\d\w])(?:{MONATNAMEN})\.?{LUECKE}{JAHR_MUSTER}(?![\d\w]))"
 )
 _DATE_ANY = (
-    rf"(?:{_DATE_ISO}|{_DATE_WORT}|{_DATE_DOTTED}|{_DATE_STRICH}|{_DATE_MONTH})"
+    rf"(?:{_DATE_RANGE}|{_DATE_ISO}|{_DATE_WORT}|{_DATE_DOTTED}|{_DATE_STRICH}|"
+    rf"{_DATE_MONTH})"
 )
+
+def _telefon_gueltig(text: str) -> bool:
+    """Mindestens sechs Ziffern: eine echte Nummer, kein Zahlenteil.
+
+    Aus der Lerndatei: "0270", "0657", "0800", "08142" und "08731/"
+    stehen mitten in IBANs, Handelsregistern und Klammern und sind keine
+    Telefonnummern.
+    """
+    return len(re.sub(r"\D", "", text)) >= 6
+
 
 _ID_SUFFIX = r"[. \t-]{0,2}(?:nummer|nr\.?|identifikationsnummer|id|zeichen|kennzeichen)"
 _ID_STEMS = (
@@ -307,6 +362,42 @@ _ID_STEMS = (
 _ID_LABEL = (
     rf"(?:(?:{_ID_STEMS}){_ID_SUFFIX}|sv-?nummer|aktenzeichen|geschaeftszeichen|zeichen)"
 )
+
+# Einzelne Gattungsworte stehen im amtlichen Verzeichnis als Strassenname
+# irgendeiner Gemeinde ("Ring", "Park", "Hof"). Allein im Text sind sie keine
+# Adresse.
+_GENERISCHE_STRASSEN = frozenset(
+    {
+        "allee",
+        "berg",
+        "blick",
+        "damm",
+        "feld",
+        "gasse",
+        "grund",
+        "hain",
+        "hof",
+        "markt",
+        "park",
+        "platz",
+        "ring",
+        "steig",
+        "strasse",
+        "tor",
+        "ufer",
+        "weg",
+        "zeile",
+    }
+)
+
+
+def _strasse_bekannt(text: str) -> bool:
+    """Steht der Name im amtlichen Strassenverzeichnis (core/strassen.py)?"""
+    return (
+        strassen_verzeichnis.ist_strasse(text)
+        and strassen_verzeichnis.normalisiere(text) not in _GENERISCHE_STRASSEN
+    )
+
 
 RULES: tuple[Rule, ...] = (
     Rule(
@@ -325,6 +416,17 @@ RULES: tuple[Rule, ...] = (
             rf"(?<!\w)(?:Am|An|Auf|Beim|Hinter|Im|In|Unter|Vor|Zum|Zur)[ \t]+"
             rf"(?:dem|der|den)?[ \t]*[A-Z\u00c4\u00d6\u00dc]{_CITY_PART}[ \t]+{_HOUSE_NO}(?!\w){_HOUSE_END}"
         ),
+    ),
+    Rule(
+        key="street_name",
+        label="Strassenname",
+        group="address",
+        category=Category.ADDRESS,
+        # Ein Strassenname aus dem amtlichen Verzeichnis auch ohne Hausnummer.
+        # Geprueft wird gegen die Liste, nicht gegen die Endung: "Kalkulation"
+        # endet nicht wie eine Strasse, "Park" ist eine.
+        pattern=rf"(?<![\w]){_STREET_WORD}(?![\w])",
+        validate=_strasse_bekannt,
     ),
     Rule(
         key="house_number",
@@ -365,7 +467,8 @@ RULES: tuple[Rule, ...] = (
         category=Category.POSTAL,
         case_sensitive=True,
         pattern=(
-            rf"(?<!\w)(?i:CH)[ \t]*[-\u2011]?[ \t]*{_CH_PLZ}(?!\d)"
+            # CH-9435 Heerbrugg und FL-9494 Schaan (Liechtenstein).
+            rf"(?<!\w)(?i:CH|FL)[ \t]*[-\u2011]?[ \t]*{_CH_PLZ}(?!\d)"
             rf"(?:[ \t]+{_CH_CITY_WORD}){{0,3}}"
         ),
         validate=_plz_gueltig,
@@ -443,12 +546,15 @@ RULES: tuple[Rule, ...] = (
         category=Category.CONTACT,
         pattern=r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]{2,})+",
     ),
-    Rule(
+        Rule(
         key="phone",
         label="Telefon",
         group="contact",
         category=Category.CONTACT,
-        pattern=(
+        # Kuerzere Stuecke sind Nummernteile: "0270" aus einer IBAN,
+        # "08142" aus einer Klammer, "0657" aus einem Handelsregister.
+        validate=_telefon_gueltig,
+        pattern=(   
             # Landesvorwahl (+49, +41, 0049, 0041) oder fuehrende 0
             r"(?<![\w])(?:\+\d{1,3}|00\d{1,3}|0)[ \t\-/]{0,3}"
             r"(?:\([ \t]?0[ \t]?\)[ \t\-/]{0,3})?"

@@ -17,7 +17,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import berufe, geburtsdatum as geburtsdatum_core, lerndatei, lernregeln, plz
+from . import (
+    berufe,
+    geburtsdatum as geburtsdatum_core,
+    lerndatei,
+    lernregeln,
+    namen,
+    plz,
+    strassen,
+)
 from .extract import TextMap, open_document
 from .models import Category, Finding
 from .rules import Rule, compiled as compiled_rule, rules_for_groups
@@ -86,6 +94,99 @@ _AI_STOPWORDS = frozenset(
         "adresse",
     }
 )
+
+# Woerter, die das NER-Modell als Person meldet, im Dokument aber Sachwoerter
+# sind: Taetigkeiten und Eigenschaften aus Zeugnissen, Beschriftungen von
+# Kontaktbloecken und Bankkuerzel. Aus der Lerndatei gelernt.
+_KEIN_NAME = frozenset(
+    {
+        "urlaub",
+        "wesens",
+        "kalkulation",
+        "wärmeschutz",
+        "waermeschutz",
+        "nachtragsmanagement",
+        "arbeitsanfall",
+        "jugendnachwuchs",
+        "fassaden",
+        "flachdach",
+        "schnittstellenkompetenz",
+        "schnelles",
+        "young",
+        "wolf",
+        "fi",
+        "aik",
+        "cross-trade",
+        "bachelor",
+        "master",
+        "professional",
+        "tel",
+        "telefax",
+        "fax",
+        "telefon",
+        "internet",
+        "e-mail",
+        "email",
+        "ust-idnr",
+        "hrb",
+        "handelsregister",
+        "amtsgericht",
+        # Monatsnamen stehen in Daten und Tabellen, sind aber keine Namen.
+        "januar",
+        "februar",
+        "märz",
+        "maerz",
+        "april",
+        "mai",
+        "juni",
+        "juli",
+        "august",
+        "september",
+        "oktober",
+        "november",
+        "dezember",
+        "jan",
+        "feb",
+        "mär",
+        "mrz",
+        "apr",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "sept",
+        "okt",
+        "nov",
+        "dez",
+    }
+)
+# Deutsche Substantivierungen enden so; ein Name nur selten.
+_KEIN_NAME_ENDE = (
+    "ung",
+    "ungen",
+    "heit",
+    "keiten",
+    "keit",
+    "schaft",
+    "kompetenz",
+    "management",
+    "schutz",
+    "anfall",
+    "nachwuchs",
+    "arbeiten",
+    "faehigkeit",
+    "fähigkeit",
+    "bereitschaft",
+)
+# Erst ab dieser Laenge, sonst traefe die Endung auch kurze Namen.
+_KEIN_NAME_MINDESTLAENGE = 8
+# Bankkuerzel: IBAN-Anfang (DE80) und BIC (BYLADEM1FFB).
+_IBAN_ANFANG = re.compile(r"[A-Z]{2}\d{2}")
+_BIC = re.compile(r"[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?")
+# Spalten aus Vierergruppen: "6510 0000 0270 7002" (IBAN),
+# "47 4512 0032 3070 7005" (Handelsregister).
+_NUMMERNGRUPPEN = re.compile(r"(?:\d{4}[ \t]+){2,}\d{2,4}")
+
 
 # Ein einmal erkannter Name wird im ganzen Dokument gesucht - auch dort, wo
 # er mitten in einer Adresszeile, einem Briefkopf oder einer Fusszeile steht.
@@ -356,7 +457,9 @@ def _nur_geburtsdatum(
         if candidate.category is Category.DATE and candidate.entity != "MANUAL":
             angabe = geburtsdatum_core.als_angabe(candidate.text)
             if angabe is None:
-                # Kein lesbares Datum: als Datum nicht brauchbar.
+                # Kein lesbares Datum ("05/2013 - 07/2013"): bleibt als
+                # Datums-Treffer stehen, taugt nur nicht zur Einordnung.
+                uebrige.append(candidate)
                 continue
             daten.append((candidate, angabe))
         else:
@@ -445,6 +548,43 @@ def _iter_lines(text: str):
         offset += len(line) + 1
 
 
+def _ist_sachwort(text: str) -> bool:
+    """Ist der Text ein Sachwort (oder Bankkuerzel) und kein Name?"""
+    cleaned = text.strip(" .,;:!?\"'")
+    if not cleaned:
+        return True
+    if cleaned.lower() in _KEIN_NAME:
+        return True
+    if _IBAN_ANFANG.fullmatch(cleaned) or _BIC.fullmatch(cleaned):
+        return True
+    woerter = cleaned.split()
+    if len(woerter) > 1:
+        return all(_ist_sachwort(wort) for wort in woerter)
+    lowered = cleaned.lower().strip("-/")
+    if len(lowered) < _KEIN_NAME_MINDESTLAENGE:
+        return False
+    return lowered.endswith(_KEIN_NAME_ENDE)
+
+
+def _in_nummernspalte(text: str, start: int, end: int) -> bool:
+    """Steht der Treffer in einer Spalte aus Vierergruppen?
+
+    IBANs und Handelsregisternummern stehen in Vierergruppen; die Telefonregel
+    liest daraus sonst einzelne Gruppen ("0270", "0032") als Nummer.
+    """
+    zeilen_anfang = text.rfind("\n", 0, start) + 1
+    zeilen_ende = text.find("\n", end)
+    if zeilen_ende < 0:
+        zeilen_ende = len(text)
+    zeile = text[zeilen_anfang:zeilen_ende]
+    von = start - zeilen_anfang
+    bis = end - zeilen_anfang
+    return any(
+        gruppe.start() <= von and bis <= gruppe.end()
+        for gruppe in _NUMMERNGRUPPEN.finditer(zeile)
+    )
+
+
 def _ai_text_allowed(entity_text: str) -> bool:
     """Offensichtlichen Unsinn des NER-Modells aussortieren."""
     cleaned = entity_text.strip()
@@ -500,6 +640,38 @@ def _ai_location_is_date(entity_text: str) -> bool:
 _AI_HAS_DIGIT = re.compile(r"\d")
 
 
+# Beschriftungen, hinter denen eine Nummer steht - das ist ein Ort, aber
+# eine Registernummer, ein Kuerzel oder eine Kontaktangabe ("HRB 10710").
+_KEINE_ORT_LABELS = frozenset(
+    {
+        "hrb",
+        "hra",
+        "prh",
+        "bic",
+        "iban",
+        "uid",
+        "ust",
+        "ust-idnr",
+        "steuer",
+        "steuernr",
+        "steuer-nr",
+        "handelsregister",
+        "amtsgericht",
+        "tel",
+        "tel.",
+        "telefon",
+        "telefax",
+        "fax",
+        "e-mail",
+        "email",
+        "internet",
+        "www",
+        "geschäftsführer",
+        "geschaeftsfuehrer",
+    }
+)
+
+
 def _ai_location_is_place(entity_text: str) -> bool:
     """Ist der als Ort gemeldete Text wirklich eine Ortschaft?
 
@@ -508,6 +680,13 @@ def _ai_location_is_place(entity_text: str) -> bool:
     Ortschaftenliste: steht der Name dort nicht, ist es kein Ort. Treffer mit
     Zahlen (PLZ, Hausnummer) bleiben den Regeln ueberlassen.
     """
+    # "(08142)" ist eine Vorwahl in Klammern, kein Ort.
+    if re.fullmatch(r"\(\s*\d{3,6}\s*\)", entity_text.strip()):
+        return False
+    # "HRB 10710" und "BIC BYLADEM1FFB" sind Nummern, kein Ort.
+    kopf = entity_text.strip().split()
+    if kopf and kopf[0].strip(".,;:").lower() in _KEINE_ORT_LABELS:
+        return False
     if _AI_HAS_DIGIT.search(entity_text):
         return True
     return plz.ist_ort(entity_text)
@@ -521,6 +700,11 @@ def looks_like_street(token: str) -> bool:
 def name_tokens(text: str) -> set[str]:
     """Einzelne Namensbestandteile aus einem erkannten oder eingegebenen Namen."""
     tokens: set[str] = set()
+    # Ein Strassenname aus dem amtlichen Verzeichnis ist kein Personenname
+    # ("Rue du Rhône"). Steht der Ausdruck zugleich im Namensverzeichnis
+    # ("Steinberg"), gilt der Name.
+    if strassen.ist_strasse(text) and not namen.ist_name(text):
+        return tokens
     for raw in re.split(r"[\s,;:/()\[\]]+", text):
         token = raw.strip(".,;:!?\"'")
         if len(token) < 3:
@@ -532,7 +716,14 @@ def name_tokens(text: str) -> set[str]:
             continue
         if lowered in _NAME_PARTICLES:
             continue
-        if looks_like_street(token) or not any(char.isalpha() for char in token):
+        # Endet ein Wort wie eine Strasse, ist es meist keine Person. Ein
+        # Nachname aus dem Verzeichnis ("Steinberg") bleibt aber einer.
+        if looks_like_street(token) and not namen.ist_name(token):
+            continue
+        if not any(char.isalpha() for char in token):
+            continue
+        # "Urlaub" und "Kalkulation" sind Sachwoerter, keine Namen.
+        if _ist_sachwort(token):
             continue
         # "Dachdecker" ist ein Beruf, kein Nachname - sonst wuerde das Wort
         # im ganzen Dokument geschwaerzt.
@@ -710,6 +901,9 @@ def run_detection(
                             # Kein Ort aus der Ortschaftenliste ("Fachmessen").
                             continue
                         if category is Category.PERSON:
+                            if _ist_sachwort(entity_text):
+                                # Sachwort, keine Person ("Urlaub", "Telefax").
+                                continue
                             name_pool |= name_tokens(entity_text)
                         candidates.append(
                             _Candidate(
@@ -774,6 +968,16 @@ def run_detection(
         ]
         # Das Geburtsdatum wird zusaetzlich markiert; alle anderen Daten
         # bleiben als Datums-Treffer stehen.
+        candidates = [
+            candidate
+            for candidate in candidates
+            if not (
+                candidate.entity in ("phone", "PHONE_NUMBER")
+                and _in_nummernspalte(
+                    textmap.page(candidate.page).text, candidate.start, candidate.end
+                )
+            )
+        ]
         candidates = _nur_geburtsdatum(candidates, textmap, total)
         for candidate in _resolve(candidates):
             page_text = textmap.page(candidate.page)

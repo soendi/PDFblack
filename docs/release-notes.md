@@ -1,3 +1,13 @@
+## PDFblack 1.3.14
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.14
+
+- **Strassenverzeichnis der Schweiz:** Das amtliche Verzeichnis der Strassen von swisstopo steckt jetzt im Programm – 130 320 Strassennamen in allen Landessprachen (freie Nutzung). Ein Strassenname wird damit auch **ohne Hausnummer** erkannt („Bahnhofstrasse“ allein reicht), und Abkürzungen passen zur ausgeschriebenen Form: „Bahnhofstr.“ wird als „Bahnhofstrasse“ gefunden, „Sägmühlstrasse“ als „Saegmuehlstrasse“. Einzelne Gattungsworte, die in irgendeiner Gemeinde als Strasse geführt werden („Ring“, „Park“, „Hof“), bleiben unangetastet, damit normaler Text nicht angestrichen wird. Neu bauen: `python tools/build_strassen_data.py`.
+- **Namensverzeichnis der Schweiz:** Vor- und Nachnamen der ständigen Wohnbevölkerung vom Bundesamt für Statistik (65 150 Vornamen, 206 023 Nachnamen, OPEN-BY). Ein Nachname, der wie eine Strasse endet, bleibt damit ein Name („Steinberg“), und ein erkannter Strassenname liefert keine Namensbestandteile mehr („Rue du Rhône“). Das Verzeichnis wirkt nur bei der Namensübertragung; als Ort gemeldete Treffer der KI werden nicht umetikettiert. Neu bauen: `python tools/build_namen_data.py`.
+- **Aus der Lerndatei gelernt:** Telefonnummern brauchen mindestens sechs Ziffern – Vierergruppen aus IBAN und Handelsregister ergeben keine Nummer mehr. Sachwörter wie „Urlaub“ oder „Nachtragsmanagement“ und Kürzel wie „DE80“ gelten nicht mehr als Person. „HRB 10710“, BIC und Vorwahlen in Klammern sind kein Ort. Zeiträume wie `05/2013 - 07/2013` bleiben ein Datum, und ein Monat oder „Jahr“ unter einer Zahl ist keine Firma.
+
 ## PDFblack 1.3.13
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -239,13 +249,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.13-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.14-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 182 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Lerndatei (Korrekturen, Fehlalarme, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 198 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Lerndatei (Korrekturen, Fehlalarme, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

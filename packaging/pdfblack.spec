@@ -44,10 +44,12 @@ for package in (
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
 
-# Amtliche PLZ-/Ortschaftsliste und Berufsbezeichnungen
-# (tools/build_plz_data.py, tools/build_berufe_data.py).
+# Amtliche PLZ-/Ortschaftsliste, Strassenverzeichnis, Namensverzeichnis und
+# Berufsbezeichnungen (tools/build_*_data.py).
 datas += [
     (str(SRC / "pdfblack" / "data" / "plz_ch.json"), "pdfblack/data"),
+    (str(SRC / "pdfblack" / "data" / "strassen_ch.json"), "pdfblack/data"),
+    (str(SRC / "pdfblack" / "data" / "namen_ch.json"), "pdfblack/data"),
     (str(SRC / "pdfblack" / "data" / "berufe.json"), "pdfblack/data"),
 ]
 
