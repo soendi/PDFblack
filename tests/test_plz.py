@@ -25,6 +25,17 @@ def test_ist_ort_prueft_gegen_die_liste():
         assert not plz.ist_ort(name), name
 
 
+def test_ist_ort_genau_ohne_praefix_toleranz():
+    """Fuer Adressen zaehlt der genaue Ortsname, nicht ein Praefix davon."""
+    for name in ("Heerbrugg", "Zürich", "zuerich", "Bern", "Sion"):
+        assert plz.ist_ort_genau(name), name
+    # "Zuege" ist nur der Anfang von "Zuegen" - kein Ortsname.
+    for name in ("Züge", "Zuege", "Fachmessen", "Mustermann"):
+        assert not plz.ist_ort_genau(name), name
+    # Die Toleranz bleibt fuer PLZ und Ort erhalten.
+    assert plz.ist_ort("Züge") and not plz.ist_ort_genau("Züge")
+
+
 def test_bekannte_postleitzahlen():
     for code in ("1000", "1950", "2000", "3000", "8000", "8045", "9435", "9490"):
         assert plz.is_postal_code(code), code

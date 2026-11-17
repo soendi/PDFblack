@@ -1,3 +1,16 @@
+## PDFblack 1.3.16
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.16
+
+- **Ausgeschriebene Monate:** Das Geburtsdatum wird auch in Worten erkannt – „5. Februar 1990“, „5. Feb. 1990“ und „5. Feb. 90“ sind dasselbe Datum wie `05.02.1990`. Neu dazu kommt die in Zeugnissen häufige Abkürzung „Febr.“ („5. Febr. 1990“), ebenso „Jän.“. Die Schreibweise gilt für die Datums- und Geburtstagsmuster und für alle weiteren Stellen, an denen dasselbe Datum im Dokument steht.
+- **Hausnummer mit Ort in einer Zeile:** „Musterstrasse 12 Zürich“ und „Seestrasse 7 CH-8000 Zürich“ werden jetzt vollständig gefunden. Bisher gehörte die Hausnummer nicht dazu, weil hinter ihr ohne Komma ein Wort stand – der Treffer endete beim Strassennamen. Der Ort selbst wird dabei nicht mitgeschwärzt, er bleibt ein eigener PLZ/Ort-Treffer.
+- **Hausnummern in Spalten:** Stand die Hausnummer (oder PLZ und Ort) in einem eigenen Textblock neben dem Strassennamen – Tabelle, rechtsbündige Nummer, Formularfeld –, setzte die Textaufbereitung mitten in die Adresse einen Zeilenumbruch, und nur der halbe Treffer blieb übrig. Jetzt entscheidet die Lage auf der Seite: Wörter derselben sichtbaren Zeile bleiben zusammen.
+- **Fünfstellige PLZ mit Ortschaft:** „82140 Olching“ und „D-82140 Olching“ werden auch dann erkannt, wenn PLZ und Ort in getrennten Feldern stehen. Die Ziffern bleiben vollständig – aus `82140` wird nie die Schweizer PLZ `8214`.
+- **Umbrochene IBANs:** Steht der Rest einer IBAN in der nächsten Zeile, fehlten die letzten Zeichen im Treffer und die Prüfziffer schlug fehl. Die Nummer wird jetzt aus der Folgezeile ergänzt – aber nur, wenn sie damit eine gültige IBAN (Mod 97) ergibt. Reicht die Fortsetzung nicht, bleibt die abgeschnittene Nummer stehen und der Hinweis meldet es weiterhin.
+- **Strengere Ortsprüfung:** Nur ein echter Ortsname macht die Hausnummer zur Adresse. „Bahnhof 5 Züge“ ist keine Adresse mehr, nur weil „Zügen“ in der Ortsliste steht – verglichen wird die genaue Schreibweise (Akzente und Umlaut-Umschrift bleiben erlaubt). Bei PLZ und Ort bleibt die bisherige Toleranz erhalten.
+
 ## PDFblack 1.3.15
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -263,13 +276,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.15-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.16-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 256 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 267 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern (auch mit Ort dahinter und in getrennten Textblöcken), fünfstellige PLZ mit Ortschaft, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate samt ausgeschriebenen und abgekürzten Monaten („Febr.“), umbrochene IBANs, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

@@ -117,6 +117,21 @@ def ist_ort(text: str) -> bool:
     return False
 
 
+def ist_ort_genau(text: str) -> bool:
+    """Steht dieser Name genau so in der Ortschaftenliste?
+
+    Ohne die Praefix-Toleranz von :func:`ist_ort`: "Zuege" ist kein Ort, nur
+    weil "Zuegen" in der Liste steht. Fuer die Adresserkennung zaehlt die
+    genaue Schreibweise - Akzente und Umlaut-Umschrift bleiben erlaubt -, damit
+    "Bahnhof 5 Zuege" keine Adresse wird. Fuer PLZ und Ort bleibt die Toleranz
+    in :func:`ist_ort`, dort steht der Ort neben seiner Postleitzahl.
+    """
+    namen = _alle_namen()
+    if not namen:
+        return False
+    return any(kandidat in namen for kandidat in _kandidaten(text))
+
+
 def quellen() -> list[str]:
     """Herkunft und Lizenz der Liste (fuer den Ueber-Dialog)."""
     try:

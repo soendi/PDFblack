@@ -26,8 +26,11 @@ MONATE: dict[str, int] = {
     "januar": 1,
     "jänner": 1,
     "jaenner": 1,
+    "jän": 1,
     "jan": 1,
     "februar": 2,
+    # "Febr." ist die haeufigste Abkuerzung in Zeugnissen.
+    "febr": 2,
     "feb": 2,
     "märz": 3,
     "maerz": 3,

@@ -148,6 +148,8 @@ _KEIN_NAME = frozenset(
         "november",
         "dezember",
         "jan",
+        "jän",
+        "febr",
         "feb",
         "mär",
         "mrz",
@@ -566,6 +568,29 @@ def _ist_sachwort(text: str) -> bool:
     if len(lowered) < _KEIN_NAME_MINDESTLAENGE:
         return False
     return lowered.endswith(_KEIN_NAME_ENDE)
+
+
+def _iban_verlaengern(text: str, start: int, end: int) -> int:
+    """Eine am Zeilenumbruch abgeschnittene IBAN ergaenzen.
+
+    In Briefkoepfen steht die IBAN oft in zwei Zeilen ("DE89 3704 0044" /
+    "0532 0130 00"). Die Regel liest dann nur die erste Zeile; die restlichen
+    Zeichen fehlten im Treffer und die Pruefziffer schlug fehl. Ergaenzt wird
+    aus der naechsten Zeile - aber nur, wenn die laengere Nummer eine gueltige
+    IBAN ergibt. Sonst bliebe die abgeschnittene Nummer stehen.
+    """
+    rest = text[end:]
+    if re.match(r"[ \t]*\n[ \t]*[A-Z0-9]", rest, re.IGNORECASE) is None:
+        return end
+    zeilenende = rest.find("\n", rest.index("\n") + 1)
+    zeile = rest if zeilenende < 0 else rest[:zeilenende]
+    for treffer in re.finditer(r"[A-Z0-9]{1,4}", zeile, re.IGNORECASE):
+        kandidat = text[start : end + treffer.end()]
+        if len(re.sub(r"\s", "", kandidat)) > 34:
+            break
+        if plausibel.iban_gueltig(kandidat) is True:
+            return end + treffer.end()
+    return end
 
 
 def _in_nummernspalte(text: str, start: int, end: int) -> bool:
@@ -1062,6 +1087,22 @@ def run_detection(
                                 priority=PRIORITY_AI,
                             )
                         )
+
+        # --- abgeschnittene IBAN ergaenzen ---------------------------
+        # Steht der Rest einer IBAN in der naechsten Zeile, fehlten die letzten
+        # Zeichen im Treffer ("DExx xxxx xxxx" statt der ganzen Nummer).
+        for candidate in candidates:
+            if candidate.entity != "iban":
+                continue
+            if plausibel.iban_gueltig(candidate.text) is True:
+                continue
+            seite = textmap.page(candidate.page).text
+            neues_ende = _iban_verlaengern(seite, candidate.start, candidate.end)
+            if neues_ende <= candidate.end:
+                continue
+            candidate.end = neues_ende
+            candidate.text = seite[candidate.start : neues_ende]
+            candidate.source = "Muster \u00b7 IBAN (Fortsetzung in der naechsten Zeile)"
 
         # --- Schreibvarianten ----------------------------------------
         # Steht ein Name, eine Strasse oder ein Ort mehrfach im Dokument, gilt

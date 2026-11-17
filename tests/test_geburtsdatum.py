@@ -271,6 +271,64 @@ def test_monatsnamen_in_allen_abkuerzungen():
         assert geburtsdatum.als_datum(text) == erwartet, text
 
 
+def test_februar_in_allen_schreibweisen():
+    """05.02.1990 auch ausgeschrieben und abgekuerzt."""
+    faelle = {
+        "5. Februar 1990": date(1990, 2, 5),
+        "05. Februar 1990": date(1990, 2, 5),
+        "5. Feb. 1990": date(1990, 2, 5),
+        "5. Feb 1990": date(1990, 2, 5),
+        "5. Feb. 90": date(1990, 2, 5),
+        "5. Febr. 1990": date(1990, 2, 5),
+        "5. Febr. 90": date(1990, 2, 5),
+        "5. Jän. 1990": date(1990, 1, 5),
+    }
+    for text, erwartet in faelle.items():
+        assert geburtsdatum.als_datum(text) == erwartet, text
+
+
+def test_ausgeschriebenes_geburtsdatum_wird_erkannt(tmp_path):
+    """Der Monatsname zaehlt wie die Zahlenform als Geburtsdatum."""
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    quelle = _pdf(
+        tmp_path / "geb_wort.pdf",
+        [
+            "Geburtsdatum: 5. Februar 1990",
+            "Eintritt 01.09.2020",
+            "Zeugnis vom 12.03.2026",
+        ],
+    )
+    ergebnis = run_detection(
+        str(quelle), DetectionOptions(use_ai=False, rule_groups=("date",))
+    )
+    texte = [
+        finding.text
+        for finding in ergebnis.findings
+        if finding.category is Category.BIRTHDATE
+    ]
+    assert texte == ["Geburtsdatum: 5. Februar 1990"]
+
+
+def test_kurzform_des_monats_wird_erkannt(tmp_path):
+    """"Geburtstag: 5. Febr. 90" ist dasselbe Datum."""
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    quelle = _pdf(
+        tmp_path / "geb_kurz.pdf",
+        ["Geburtstag: 5. Febr. 90", "Eintritt 01.09.2020"],
+    )
+    ergebnis = run_detection(
+        str(quelle), DetectionOptions(use_ai=False, rule_groups=("date",))
+    )
+    texte = [
+        finding.text
+        for finding in ergebnis.findings
+        if finding.category is Category.BIRTHDATE
+    ]
+    assert texte == ["Geburtstag: 5. Febr. 90"]
+
+
 def test_monat_jahr_ohne_tag():
     angabe = geburtsdatum.Angabe
     assert geburtsdatum.als_angabe("10/2025") == angabe(2025, 10)

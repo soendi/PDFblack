@@ -133,8 +133,11 @@ _HOUSE_NO_SHORT = r"\d{1,3}(?:[ \t]?[a-zA-Z])?(?:[ \t]?[-/][ \t]?\d{1,2})?"
 # Dachdecker" ist keine Adresse. Verbindungen wie "in 8000 Zuerich" bleiben
 # erlaubt, damit Adressen mitten im Satz weiter gefunden werden.
 _HOUSE_NEXT_OK = r"(?i:in|im|bei|an|am|zu|zum|zur|und|oder|bzw|sowie|wohnhaft)"
+# Die Hausnummer steht direkt vor der PLZ mit Laenderkuerzel ("Seestrasse 7
+# CH-8000 Zuerich"): das ist eine Adresszeile, kein Satz.
+_HOUSE_PLZ = r"(?:(?i:CH|FL|DE|AT|LI|D|A)[ \t]*[-\u2011]?[ \t]*\d{4,5})"
 _HOUSE_END = (
-    rf"(?![ \t]+(?!{_HOUSE_NEXT_OK}\b)"
+    rf"(?![ \t]+(?!{_HOUSE_NEXT_OK}\b|{_HOUSE_PLZ}\b)"
     r"[A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df])"
 )
 _HOUSE_NO_STOP = (
@@ -160,6 +163,11 @@ _HOUSE_STREET = (
     r"(?i:du|de|la|le|des|der|den|dem|am|an|auf|im|in|vor|unter|auf|op|van|von|"
     r"sur|sous|aux|zum|zur|bei|beim|ob|ueber|über))){0,3}"
 )
+# Ein Ortsname hinter der Hausnummer ("Musterstrasse 12 Zuerich").
+_PLACE_WORD = (
+    r"[A-Z\u00c4\u00d6\u00dc][A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df.\-']*"
+)
+_PLACE_FOLLOW = rf"{_PLACE_WORD}(?:[ \t]+{_PLACE_WORD}){{0,2}}"
 
 _PLZ = r"(?:0[1-9]|[1-9]\d)\d{3}"
 _CITY_PART = r"[\w\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df.\-]*"
@@ -482,6 +490,29 @@ def _strasse_getrennt_bekannt(text: str) -> bool:
     return _strasse_bekannt(zusammen)
 
 
+def _strasse_mit_ort(text: str) -> bool:
+    """Steht hinter der Hausnummer eine Ortschaft?
+
+    "Musterstrasse 12 Zuerich" ist eine Adresse - auch wenn hinter der
+    Hausnummer kein Komma steht. Geprueft wird der Ortsname gegen die
+    amtliche Ortschaftenliste; damit wird "Bahnhof 5 Personen" keine Adresse.
+    Der Ort selbst bleibt unangetastet, er steht als PLZ/Ort-Treffer daneben.
+
+    Verglichen wird die genaue Schreibweise: "Bahnhof 5 Zuege" ist keine
+    Adresse, obwohl "Zuegen" in der Liste steht - die Praefix-Toleranz von
+    ``plz.ist_ort`` gilt nur dort, wo eine Postleitzahl daneben steht.
+    """
+    teile = text.split()
+    if len(teile) < 3:
+        return False
+    for anzahl in (1, 2, 3):
+        if len(teile) - anzahl < 2:
+            break
+        if plz_liste.ist_ort_genau(" ".join(teile[-anzahl:])):
+            return True
+    return False
+
+
 RULES: tuple[Rule, ...] = (
     Rule(
         key="street",
@@ -551,6 +582,23 @@ RULES: tuple[Rule, ...] = (
             rf"(?![ \t]?[-/][ \t]?\d{{3,}})"
             rf"{_HOUSE_END}"
         ),
+    ),
+    Rule(
+        key="street_place",
+        label="Stra\u00dfe + Hausnummer (Ort dahinter)",
+        group="address",
+        category=Category.ADDRESS,
+        group_index=1,
+        # "Musterstrasse 12 Zuerich": Die Hausnummer gehoert zur Adresse, auch
+        # wenn der Ort ohne Komma und ohne PLZ dahinter steht. Die Ortschaft
+        # selbst wird nicht mitgeschwaerzt - sie steht als eigener Treffer
+        # daneben, und die Pruefung gegen die Ortschaftenliste verhindert, dass
+        # aus "Bahnhof 5 Personen" eine Adresse wird.
+        pattern=(
+            rf"(?<!\w)({_STREET_WORD}\.?[ \t]*{_HOUSE_NO})(?!\w)[ \t]+"
+            rf"{_PLACE_FOLLOW}"
+        ),
+        validate=_strasse_mit_ort,
     ),
     Rule(
         key="postal_city",
