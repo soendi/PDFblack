@@ -174,10 +174,9 @@ def test_drittes_programm_pdfocr(window):
     QtTest.QTest.qWait(600)
 
     assert window._program == "pdfocr"
-    # Gruen steht genau dort, wo der blaue Text beginnt.
-    assert header.ocr.x() == header.title_x()
-    # Der Vergleichsbutton ist an seinen Platz zurueckgekehrt.
-    assert header.compare.x() == header.compare_rest_x()
+    # Blau steht neben rot, gruen direkt neben blau - Reihenfolge bleibt.
+    assert header.compare.x() == header.title_x()
+    assert header.ocr.x() == header.title_x() + header.LOGO_SIZE + header.GAP
     # Nur PDFocr zeigt Text.
     assert header.ocr.text_opacity > 0.99
     assert header.compare.text_opacity < 0.01
@@ -192,6 +191,24 @@ def test_drittes_programm_pdfocr(window):
     assert header.ocr.text_opacity < 0.01
     assert header.compare.x() == header.compare_rest_x()
     assert header.ocr.x() == header.ocr_rest_x()
+
+
+def test_blau_faehrt_allein_nach_links(window):
+    """Klick auf PDFcompare: blau faehrt neben rot, gruen bleibt stehen."""
+    header = window.header
+    QtTest.QTest.qWait(100)
+    gruen_ruhe = header.ocr_rest_x()
+    assert header.ocr.x() == gruen_ruhe
+
+    _click(header.compare.logo)
+    assert _wait_until(lambda: window.workspace.currentWidget() is window.compare_view)
+    QtTest.QTest.qWait(600)
+
+    assert header.compare.x() == header.title_x()
+    # Gruen ruehrt sich nicht und bleibt rechts von blau.
+    assert header.ocr.x() == gruen_ruhe
+    assert header.compare.x() < header.ocr.x()
+    assert header.black.x() == header.MARGIN
 
 
 def test_drei_buttons_stehen_nebeneinander(window):

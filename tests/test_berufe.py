@@ -136,3 +136,24 @@ def test_berufsbezeichnung_wird_nicht_erkannt(tmp_path):
     for finding in result.findings:
         assert "Dachdecker" not in finding.text, finding.text
         assert "Vorarbeiter" not in finding.text, finding.text
+
+
+def test_zusammengesetzte_berufe_gelten_auch():
+    """Steckt ein Beruf in einem Wort, gilt das ganze Wort als Beruf."""
+    for wort in (
+        "Dachdeckerhandwerk",
+        "Dachdeckerbetrieb",
+        "Dachdeckerarbeiten",
+        "Zimmererhandwerk",
+        "Arztpraxis",
+    ):
+        assert berufe.ist_beruf(wort), wort
+        assert berufe.ist_berufswort(wort), wort
+        assert name_tokens(wort) == set(), wort
+
+    # Namen bleiben Namen, auch wenn ein Beruf darin steckt.
+    assert not berufe.ist_beruf("Neubauer")
+    assert not berufe.ist_beruf("Schmidt-Lorenz")
+    assert name_tokens("Neubauer") == {"Neubauer"}
+    # Allgemeine Rollen machen allein noch keinen Beruf.
+    assert not berufe.ist_beruf("Mustermeister")

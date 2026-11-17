@@ -41,6 +41,33 @@ def _einzelwoerter() -> frozenset[str]:
     return frozenset(eintrag for eintrag in _berufe() if " " not in eintrag)
 
 
+# Allgemeine Rollen, die allein nichts ueber den Beruf sagen: "Mustermeister"
+# ist kein Beruf, nur weil "Meister" darin steckt.
+_ZU_ALLGEMEIN = frozenset(
+    {
+        "meister", "meisterin", "geselle", "gesellin", "helfer", "helferin",
+        "fachmann", "fachfrau", "lehrling", "praktikant", "praktikantin",
+        "kraft", "hilfskraft", "azubi",
+    }
+)
+
+
+@lru_cache(maxsize=1)
+def _berufsteile() -> frozenset[str]:
+    """Berufsworte, die auch in einem zusammengesetzten Wort gelten.
+
+    Sehr kurze Eintraege der Liste ("rat", "fax") und allgemeine Rollen
+    taugen nicht als Teilwort.
+    """
+    return frozenset(
+        eintrag
+        for eintrag in _einzelwoerter()
+        if len(eintrag) >= 4
+        and eintrag not in _ZU_ALLGEMEIN
+        and eintrag not in _AUCH_NACHNAME
+    )
+
+
 def verfuegbar() -> bool:
     return bool(_berufe())
 
@@ -54,7 +81,9 @@ def ist_beruf(text: str) -> bool:
     klein = normalisiere(text)
     if klein in _berufe():
         return True
-    return " " not in klein and _aus_beruf(klein)
+    if " " in klein:
+        return False
+    return _aus_beruf(klein) or _als_zusammensetzung(klein)
 
 
 # Woerter, die Beruf und haeufiger Nachname zugleich sind ("Herr Mueller",
@@ -89,6 +118,24 @@ _ZUSATZ = (
 )
 
 
+def _als_zusammensetzung(klein: str) -> bool:
+    """Steckt ein Beruf in einem zusammengesetzten Wort?
+
+    "Dachdeckerhandwerk" und "Dachdeckerbetrieb" enthalten "Dachdecker" und
+    gelten damit als Berufsbezeichnung. Berufe, die zugleich haeufiger
+    Nachname sind ("Maurer", "Koch"), zaehlen dabei nicht mit, und
+    zusammengesetzte Namen mit Bindestrich ("Schmidt-Lorenz") bleiben Namen.
+    """
+    if "-" in klein:
+        return False
+    teile = _berufsteile()
+    for start in range(len(klein)):
+        for ende in range(start + 4, len(klein) + 1):
+            if klein[start:ende] in teile:
+                return True
+    return False
+
+
 def _aus_beruf(klein: str) -> bool:
     """Beruf mit Zusatz, z. B. "dachdeckermeisterin"?"""
     for zusatz in _ZUSATZ:
@@ -111,7 +158,7 @@ def ist_berufswort(wort: str) -> bool:
         return False
     if klein in _einzelwoerter():
         return True
-    return _aus_beruf(klein)
+    return _aus_beruf(klein) or _als_zusammensetzung(klein)
 
 
 def quellen() -> list[str]:

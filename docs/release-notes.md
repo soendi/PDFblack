@@ -1,3 +1,12 @@
+## PDFblack 1.3.4
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.4
+
+- **Die Knöpfe bleiben in ihrer Reihenfolge:** Beim Klick auf PDFcompare fährt nur der blaue Knopf nach links neben den roten – der grüne bleibt, wo er ist. Erst der Klick auf PDFocr bewegt beide: blau neben rot, grün neben blau. Es wird also nur geblättert, nie getauscht; der grüne Knopf bewegt sich nicht mehr mit, wenn nur PDFcompare gewählt wird.
+- **Berufe in Zusammensetzungen gelten auch:** Steckt eine Berufsbezeichnung in einem Wort, ist das Wort ein Beruf – „Dachdeckerhandwerk“, „Dachdeckerbetrieb“, „Dachdeckerarbeiten“, „Zimmererhandwerk“ und „Arztpraxis“ werden deshalb nicht mehr als Name geschwärzt. Namen bleiben geschützt: allgemeine Rollen („Mustermeister“), Berufe, die häufiger Nachname sind („Neubauer“, „Neumaier“), und Bindestrich-Namen („Schmidt-Lorenz“) zählen nicht als Wortteil.
+
 ## PDFblack 1.3.3
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -134,13 +143,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.3-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.4-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 103 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 105 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

@@ -286,11 +286,12 @@ class _BrandBlock(QWidget):
 class AppHeader(QWidget):
     """Kopfzeile mit drei Programmen.
 
-    PDFblack steht links, PDFcompare ab der Fenstermitte, PDFocr direkt hinter
-    dem Logo von PDFcompare - genau dort, wo dessen Text anfaengt (der ist in
-    dieser Stellung ausgeblendet). Wird ein Programm gewaehlt, faehrt dessen
-    Logo an den Anfang des PDFblack-Textes; PDFocr rueckt dann hinter den
-    blauen Block, wie er gerade steht.
+    Die Reihenfolge ist immer dieselbe: PDFblack, PDFcompare, PDFocr - wie
+    Blaettern, nie tauschen die Knoepfe die Seiten. PDFblack steht links,
+    PDFcompare ab der Fenstermitte, PDFocr unmittelbar hinter dem blauen Logo.
+    Bei PDFcompare faehrt nur der blaue Knopf nach links neben den roten; bei
+    PDFocr fahren blau (neben rot) und gruen (neben blau) nach links. Der
+    gruene Knopf ruehrt sich nicht, wenn nur PDFcompare gewaehlt wird.
 
     Sichtbar ist immer nur der Text des aktiven Programms.
     """
@@ -419,21 +420,22 @@ class AppHeader(QWidget):
         )
 
     def block_x(self, name: str, program: str) -> int:
-        """x-Position des Logos eines Blocks fuer das gewaehlte Programm."""
+        """x-Position des Logos eines Blocks fuer das gewaehlte Programm.
+
+        Die Reihenfolge bleibt immer rot, blau, gruen - geblaettert wird nur
+        nach links: blau faehrt bei PDFcompare und PDFocr neben rot, gruen
+        faehrt nur beim eigenen Programm neben blau. Sonst steht jeder Block
+        an seinem Platz.
+        """
         if name == "pdfblack":
             return self.MARGIN
         if name == "pdfcompare":
-            # Beim Vergleich faehrt der blaue Button an den Anfang des
-            # PDFblack-Textes, sonst steht er an seinem Platz.
-            return self.title_x() if program == "pdfcompare" else self.compare_rest_x()
+            if program in ("pdfcompare", "pdfocr"):
+                return self.title_x()
+            return self.compare_rest_x()
         if program == "pdfocr":
-            # Genau dort, wo der Text des blauen Buttons anfaengt.
-            return self.title_x()
-        if program == "pdfcompare":
-            # Direkt hinter dem blauen Button, der nach links gefahren ist.
-            return self._bis_zur_version(
-                self.title_x() + self.compare.sizeHint().width() + self.GAP
-            )
+            # Rechts neben dem blauen Button, der neben rot steht.
+            return self.title_x() + self.LOGO_SIZE + self.GAP
         return self.ocr_rest_x()
 
     def _place(self, animate: bool, program: str | None = None) -> None:
