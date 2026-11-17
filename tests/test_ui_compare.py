@@ -670,3 +670,42 @@ def test_uebergabe_text_ist_einstellbar(qt_app, settings_dir, monkeypatch):
 
     for widget in (dialog, wieder):
         widget.deleteLater()
+
+
+def test_pruefung_bekommt_alle_stapel(qt_app, settings_dir, monkeypatch, tmp_path):
+    from pdfblack.ui import compare, preferences
+
+    preferences.set_review_enabled(True)
+    view = compare.CompareView()
+    dateien = {}
+    for name in ("bewerbung", "lebenslauf", "zeugnis", "diplom"):
+        pfad = tmp_path / f"{name}.pdf"
+        pfad.write_bytes(b"%PDF-1.4\n")
+        dateien[name] = str(pfad)
+    view.application.set_files([dateien["bewerbung"]])
+    view.life.set_files([dateien["lebenslauf"]])
+    view.certs.set_files([dateien["zeugnis"]])
+    view.diplome.set_files([dateien["diplom"]])
+
+    geoeffnet: list[tuple] = []
+
+    class StubDialog:
+        def __init__(self, *args, **kwargs) -> None:
+            geoeffnet.append(args)
+
+        def exec(self) -> int:
+            return 0
+
+    monkeypatch.setattr(compare, "ReviewDialog", StubDialog)
+    view.review_button.click()
+
+    assert geoeffnet
+    assert list(geoeffnet[0][:4]) == [
+        [dateien["lebenslauf"]],
+        [dateien["zeugnis"]],
+        [dateien["bewerbung"]],
+        [dateien["diplom"]],
+    ]
+
+    view.deleteLater()
+    qt_app.processEvents()

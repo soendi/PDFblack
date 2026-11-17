@@ -593,7 +593,14 @@ class CompareView(QWidget):
         """Prüffenster mit lokalen Befunden und der Copilot-Frage öffnen."""
         if not preferences.review_enabled():
             return
-        dialog = ReviewDialog(self.life.paths(), self.certs.paths(), self)
+        # Alle vier Stapel gehen in die Prüfung, nicht nur Lebenslauf und Zeugnisse.
+        dialog = ReviewDialog(
+            self.life.paths(),
+            self.certs.paths(),
+            self.application.paths(),
+            self.diplome.paths(),
+            self,
+        )
         dialog.exec()
 
     def _hand_over(self, entry: dict[str, str]) -> None:

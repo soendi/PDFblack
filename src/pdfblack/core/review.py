@@ -323,10 +323,22 @@ def duplicates(paths: list[str]) -> list[list[str]]:
     return [gruppe for gruppe in gruppen.values() if len(gruppe) > 1]
 
 
-def review(life: list[str], certs: list[str]) -> ReviewReport:
-    """Alles prüfen, was ohne KI prüfbar ist."""
+def review(
+    life: list[str],
+    certs: list[str],
+    application: list[str] | None = None,
+    diplome: list[str] | None = None,
+) -> ReviewReport:
+    """Alles prüfen, was ohne KI prüfbar ist.
+
+    Geprüft werden alle vier Stapel. Zeiträume und Lücken kommen aus dem
+    Lebenslauf, die Reihenfolge aus den Zeugnissen.
+    """
     report = ReviewReport()
-    alle = [pfad for pfad in [*life, *certs] if Path(pfad).is_file()]
+    bewerbung = list(application or [])
+    diplome = list(diplome or [])
+    eigene = [*bewerbung, *life, *certs, *diplome]
+    alle = [pfad for pfad in eigene if Path(pfad).is_file()]
     report.dateien = len(alle)
 
     if not life:
@@ -334,7 +346,7 @@ def review(life: list[str], certs: list[str]) -> ReviewReport:
     if not certs:
         report.findings.append(Finding("warn", "Keine Arbeitszeugnisse zugeordnet."))
 
-    for pfad in [*life, *certs]:
+    for pfad in eigene:
         if not Path(pfad).is_file():
             report.findings.append(
                 Finding("warn", f"{Path(pfad).name}: Datei ist nicht mehr vorhanden.")
@@ -421,15 +433,25 @@ HANDOVER_FRAGE = (
 )
 
 
-def build_prompt(report: ReviewReport, life: list[str], certs: list[str]) -> str:
+def build_prompt(
+    report: ReviewReport,
+    life: list[str],
+    certs: list[str],
+    application: list[str] | None = None,
+    diplome: list[str] | None = None,
+) -> str:
     """Die Frage an Copilot - Fakten kommen aus dem lokalen Prüflauf."""
+    bewerbung = list(application or [])
+    diplome = list(diplome or [])
     zeilen = [
         HANDOVER_FRAGE,
         json.dumps(ANTWORT_SCHEMA, ensure_ascii=False, indent=2),
         "",
         "Bekannte Angaben aus dem Programm (bitte nicht wiederholen, nur ergänzen):",
         f"- Lebenslauf: {', '.join(Path(pfad).name for pfad in life) or 'fehlt'}",
+        f"- Bewerbung: {', '.join(Path(pfad).name for pfad in bewerbung) or 'fehlt'}",
         f"- Zeugnisse: {', '.join(Path(pfad).name for pfad in certs) or 'fehlen'}",
+        f"- Diplome: {', '.join(Path(pfad).name for pfad in diplome) or 'fehlen'}",
         f"- Seiten gesamt: {report.seiten}",
     ]
     if report.periods:

@@ -1,3 +1,11 @@
+## PDFblack 1.3.6
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.6
+
+- **„Unterlagen prüfen …“ nimmt alle Stapel mit:** Bisher gingen nur Lebenslauf und Arbeitszeugnisse in den Prüflauf; Dateien aus „Bewerbung“ und „Diplome“ blieben unberücksichtigt, auch wenn sie hinterlegt waren. Jetzt prüft PDFcompare alle vier Stapel auf fehlende Textebenen (Scans), doppelte Dateien und nicht mehr vorhandene Dateien – die Zusammenfassung zählt sie mit. Die Frage an Copilot nennt zusätzlich die Dateien aus Bewerbung und Diplomen. Zeiträume und Lücken kommen weiterhin aus dem Lebenslauf, die Reihenfolge aus den Zeugnissen.
+
 ## PDFblack 1.3.5
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -154,13 +162,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.5-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.6-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 112 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 116 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

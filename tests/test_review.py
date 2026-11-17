@@ -201,3 +201,59 @@ def test_fenster_zeigt_befunde_und_wertet_die_antwort_aus(qt_app, tmp_path, monk
     assert QtWidgets.QApplication.clipboard().text() == "Bitte nur das JSON liefern."
     dialog.deleteLater()
     qt_app.processEvents()
+
+
+def test_pruefung_nimmt_alle_vier_stapel_auf(tmp_path):
+    """Bewerbung, Lebenslauf, Zeugnisse und Diplome zaehlen mit."""
+    bewerbung = _pdf(tmp_path / "bewerbung.pdf")  # Scan ohne Textebene
+    lebenslauf = _pdf(
+        tmp_path / "lebenslauf.pdf",
+        "01/2016 - 12/2018 Firma A\n06/2021 - heute Firma B\n",
+    )
+    zeugnis = _pdf(tmp_path / "zeugnis_2021.pdf", "Arbeitszeugnis\n2021\n")
+    diplom = _pdf(tmp_path / "diplom.pdf", "Diplom\n2022\n")
+
+    bericht = review.review([lebenslauf], [zeugnis], [bewerbung], [diplom])
+
+    assert bericht.dateien == 4
+    assert bericht.seiten == 4
+    assert "4 Dateien" in bericht.summary()
+    texte = " ".join(finding.text for finding in bericht.findings)
+    assert "bewerbung.pdf" in texte and "keine Textebene" in texte
+    assert "Kein Lebenslauf" not in texte
+    assert "Keine Arbeitszeugnisse" not in texte
+
+    frage = review.build_prompt(
+        bericht, [lebenslauf], [zeugnis], [bewerbung], [diplom]
+    )
+    for name in ("bewerbung.pdf", "lebenslauf.pdf", "zeugnis_2021.pdf", "diplom.pdf"):
+        assert name in frage
+
+
+def test_fehlende_datei_aus_der_bewerbung_wird_gemeldet(tmp_path):
+    weg = tmp_path / "weg.pdf"
+    bericht = review.review([], [], [str(weg)], [])
+
+    texte = " ".join(finding.text for finding in bericht.findings)
+    assert "weg.pdf: Datei ist nicht mehr vorhanden." in texte
+
+
+def test_fenster_zeigt_befunde_aus_allen_stapeln(qt_app, tmp_path):
+    from PySide6 import QtCore
+
+    from pdfblack.ui.review import ReviewDialog
+
+    for fmt in (QtCore.QSettings.IniFormat, QtCore.QSettings.NativeFormat):
+        QtCore.QSettings.setPath(fmt, QtCore.QSettings.UserScope, str(tmp_path))
+
+    bewerbung = _pdf(tmp_path / "bewerbung.pdf")
+    lebenslauf = _pdf(tmp_path / "lebenslauf.pdf", "01/2020 - heute Firma B\n")
+    dialog = ReviewDialog([lebenslauf], [], [bewerbung], [])
+
+    befunde = dialog.findings.toPlainText()
+    assert "bewerbung.pdf" in befunde
+    assert "keine Textebene" in befunde
+    assert "bewerbung.pdf" in dialog.question.toPlainText()
+
+    dialog.deleteLater()
+    qt_app.processEvents()

@@ -26,14 +26,25 @@ from . import preferences
 class ReviewDialog(QDialog):
     """Befunde zeigen und die Antwort von Copilot einsammeln."""
 
-    def __init__(self, life: list[str], certs: list[str], parent: QWidget | None = None):
+    def __init__(
+        self,
+        life: list[str],
+        certs: list[str],
+        application: list[str] | None = None,
+        diplome: list[str] | None = None,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Prüfung")
         self.resize(800, 860)
 
         self.life = list(life)
         self.certs = list(certs)
-        self.report = review_core.review(self.life, self.certs)
+        self.application = list(application or [])
+        self.diplome = list(diplome or [])
+        self.report = review_core.review(
+            self.life, self.certs, self.application, self.diplome
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 20, 22, 16)
@@ -117,7 +128,9 @@ class ReviewDialog(QDialog):
     # ------------------------------------------------------------------
 
     def prompt(self) -> str:
-        return review_core.build_prompt(self.report, self.life, self.certs)
+        return review_core.build_prompt(
+            self.report, self.life, self.certs, self.application, self.diplome
+        )
 
     def _ask(self) -> None:
         frage = self.question.toPlainText().strip()
