@@ -19,6 +19,7 @@ class Category(str, Enum):
     CONTACT = "Kontakt"
     BANK = "Bank / Karte"
     DATE = "Datum"
+    BIRTHDATE = "Geburtsdatum"
     MANUAL = "Manuell"
     REGEX = "Regex"
     OTHER = "Sonstiges"
@@ -37,6 +38,7 @@ _COLORS: dict[Category, str] = {
     Category.CONTACT: "#a78bfa",
     Category.BANK: "#2fd6a5",
     Category.DATE: "#ff8cc8",
+    Category.BIRTHDATE: "#c084fc",
     Category.MANUAL: "#f03e3e",
     Category.REGEX: "#22c55e",
     Category.OTHER: "#9aa3b2",

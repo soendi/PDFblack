@@ -143,10 +143,10 @@ def test_scan_wechselt_automatisch_zu_pdfocr(window, qt_app, tmp_path, monkeypat
     _scan_pdf(scan)
     window.load_pdf(str(scan))
 
-    assert _wait_until(lambda: window.workspace.currentWidget() is window.ocr_view)
-    assert window._program == "pdfocr"
-    # Die Seite ist bedienbar: Knopf zum Auslesen ist da und sichtbar.
-    assert window.ocr_view.btn_read.isVisible()
+    # PDFocr bekommt den Scan und liest ihn aus. Mit einer sofort fertigen
+    # Ersatz-Engine steht das Ergebnis schon in PDFblack, bevor hier geprueft
+    # wird - deshalb haengt der Test nicht am Zwischenzustand.
+    assert _wait_until(lambda: window.ocr_view._path == str(scan)), "Scan nicht übergeben"
     assert window.ocr_view.btn_read.text() == "Text erkennen"
     assert _wait_until(lambda: window.ocr_view._result_path is not None), "OCR lief nicht"
 

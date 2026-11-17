@@ -395,11 +395,10 @@ def test_datum_oben_rechts_ist_kein_plz_ort(tmp_path, monkeypatch):
         DetectionOptions(use_ai=True, ai_entities=("LOCATION",), rule_groups=("date",)),
     )
     found = texts(result.findings)
-    assert "20.10.2026" in found
-    assert [f.category for f in result.findings if f.text == "20.10.2026"] == [
-        Category.DATE
-    ]
     assert not [f for f in result.findings if f.category is Category.POSTAL], found
+    # Ein einzelnes Datum ist kein Geburtsdatum (der Abstand zum naechsten
+    # Datum laesst sich nicht pruefen) - geschwaerzt wird es deshalb nicht.
+    assert "20.10.2026" not in found
 
 
 def test_unbekanntes_wort_ist_keine_ortschaft(tmp_path, monkeypatch):

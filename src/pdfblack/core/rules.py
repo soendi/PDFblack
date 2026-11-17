@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from . import berufe as berufs_liste
+from . import geburtsdatum as geburtsdatum_liste
 from . import plz as plz_liste
 from .models import Category
 
@@ -259,6 +260,15 @@ _MONTH = r"(?:0?[1-9]|1[0-2])"
 _YEAR = r"(?:19|20)\d{2}"
 _DATE_DOTTED = rf"{_DAY}[./]{_MONTH}[./](?:{_YEAR}|\d{{2}})"
 _DATE_ISO = rf"{_YEAR}-{_MONTH}-{_DAY}"
+# 20. Oktober 2026, 3. März 85 - Monatsnamen stehen in Bewerbungen oft
+# statt der Zahlenform.
+_MONATNAMEN = "|".join(
+    sorted(geburtsdatum_liste.MONATE, key=len, reverse=True)
+)
+_DATE_WORT = (
+    rf"(?<![\d\w.])\d{{1,2}}\.?[ \t]*(?:{_MONATNAMEN})\.?[ \t]*"
+    rf"(?:{_YEAR}|\d{{2}})(?![\d\w])"
+)
 
 _ID_SUFFIX = r"[. \t-]{0,2}(?:nummer|nr\.?|identifikationsnummer|id|zeichen|kennzeichen)"
 _ID_STEMS = (
@@ -437,10 +447,10 @@ RULES: tuple[Rule, ...] = (
         group="date",
         category=Category.DATE,
         pattern=(
-            # 20.10.2026, 20.10.26, 20. 10. 2026 und ISO 2026-10-20.
-            # Bewusst auch ohne Beschriftung: Datumsangaben stehen in
-            # Kopfzeilen und Tabellen meist ohne "Datum:" davor.
-            rf"(?<![\d\w.])(?:{_DATE_ISO}|{_DATE_DOTTED})(?!\d)"
+            # 20.10.2026, 20.10.26, 20. 10. 2026, ISO 2026-10-20 und
+            # 20. Oktober 2026. Bewusst auch ohne Beschriftung: Datumsangaben
+            # stehen in Kopfzeilen und Tabellen meist ohne "Datum:" davor.
+            rf"(?<![\d\w.])(?:{_DATE_ISO}|{_DATE_WORT}|{_DATE_DOTTED})(?!\d)"
         ),
     ),
 )

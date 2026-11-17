@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -42,6 +43,7 @@ CATEGORY_GROUPS: dict[Category, str] = {
     Category.CONTACT: "Kontakt",
     Category.BANK: "Bank / Karte",
     Category.DATE: "Datum",
+    Category.BIRTHDATE: "Geburtsdatum",
     Category.REGEX: "Eigene Regex",
     Category.MANUAL: "Manuelle Bereiche",
     Category.OTHER: "Sonstiges",
@@ -306,8 +308,9 @@ class ControlsPanel(QScrollArea):
         self.cb_contact.setChecked(True)
         self.cb_bank = QCheckBox("Bankdaten (IBAN)")
         self.cb_bank.setChecked(True)
-        self.cb_date = QCheckBox("Datum (Geburts-, Rechnungs-, Ablaufdatum)")
-        self.cb_date.setChecked(False)
+        self.cb_date = QCheckBox("Geburtsdatum (ältestes Datum)")
+        # Nur das Geburtsdatum wird geschwaerzt - deshalb standardmaessig an.
+        self.cb_date.setChecked(True)
         for box in (
             self.cb_person,
             self.cb_location,
@@ -596,6 +599,9 @@ class FindingsPanel(QFrame):
         self.table.itemChanged.connect(self._on_item_changed)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.itemDoubleClicked.connect(self._on_double_clicked)
+        # Rechte Maustaste: alle Treffer mit demselben Text umschalten.
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_menu)
         self.stack.addWidget(self.table)
         layout.addWidget(self.stack, 1)
 
@@ -618,7 +624,11 @@ class FindingsPanel(QFrame):
         layout.addLayout(buttons)
 
         layout.addWidget(
-            _hint("Klick auf eine Zeile springt zur Stelle. Häkchen entfernen = nicht schwärzen.")
+            _hint(
+                "Klick auf eine Zeile springt zur Stelle. Häkchen entfernen = nicht "
+                "schwärzen. Doppelklick oder Rechtsklick schaltet alle Treffer mit "
+                "demselben Namen um."
+            )
         )
 
         # --- zweiter Abschnitt: dieselben Treffer nach Kategorie --------
@@ -771,6 +781,62 @@ class FindingsPanel(QFrame):
         self.category_tree.blockSignals(False)
         self._updating = False
 
+    def same_text_uids(self, text: str) -> list[int]:
+        """Alle Treffer, die denselben Text zeigen (also denselben Namen)."""
+        uids: list[int] = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, self.COL_TEXT)
+            check = self.table.item(row, self.COL_CHECK)
+            if item is None or check is None or item.text() != text:
+                continue
+            uid = check.data(Qt.UserRole)
+            if isinstance(uid, int):
+                uids.append(uid)
+        return uids
+
+    def set_many_enabled(self, uids: list[int], enabled: bool) -> None:
+        """Mehrere Treffer auf einmal an- oder abhaken."""
+        for uid in uids:
+            self.set_enabled_state(uid, enabled)
+            self.enabledChanged.emit(uid, enabled)
+
+    def toggle_same_text(self, row: int) -> int:
+        """Alle Treffer derselben Zeile umschalten; liefert deren Anzahl.
+
+        Maßgeblich ist die angeklickte Zeile: Ist sie angehakt, gehen alle
+        gleichlautenden Treffer aus, sonst alle an.
+        """
+        text_item = self.table.item(row, self.COL_TEXT)
+        check = self.table.item(row, self.COL_CHECK)
+        if text_item is None or check is None:
+            return 0
+        uids = self.same_text_uids(text_item.text())
+        if not uids:
+            return 0
+        enabled = check.checkState() != Qt.Checked
+        self.set_many_enabled(uids, enabled)
+        return len(uids)
+
+    def _show_menu(self, pos) -> None:
+        """Kontextmenü der Trefferliste."""
+        item = self.table.itemAt(pos)
+        if item is None:
+            return
+        row = item.row()
+        text_item = self.table.item(row, self.COL_TEXT)
+        if text_item is None:
+            return
+        anzahl = len(self.same_text_uids(text_item.text()))
+        if anzahl < 2:
+            return
+        menu = QMenu(self)
+        umschalten = menu.addAction(
+            f"Alle „{text_item.text()}“ umschalten ({anzahl})"
+        )
+        gewaehlt = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if gewaehlt is umschalten:
+            self.toggle_same_text(row)
+
     def selected_uids(self) -> list[int]:
         uids: list[int] = []
         for index in self.table.selectionModel().selectedRows():
@@ -831,12 +897,20 @@ class FindingsPanel(QFrame):
         if isinstance(uid, int):
             self.findingSelected.emit(uid)
 
+    def toggle_same_text_item(self, item: QTreeWidgetItem) -> int:
+        """Wie ``toggle_same_text``, nur ausgehend von einem Baum-Eintrag."""
+        if not isinstance(item.data(0, Qt.UserRole), int):
+            return 0
+        uids = self.same_text_uids(item.text(0))
+        if not uids:
+            return 0
+        enabled = item.checkState(0) != Qt.Checked
+        self.set_many_enabled(uids, enabled)
+        return len(uids)
+
     def _on_group_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
-        uid = item.data(0, Qt.UserRole)
-        if not isinstance(uid, int):
-            return
-        checked = item.checkState(0) == Qt.Checked
-        item.setCheckState(0, Qt.Unchecked if checked else Qt.Checked)
+        """Doppelklick schaltet alle gleichlautenden Treffer um."""
+        self.toggle_same_text_item(item)
 
     def _on_selection_changed(self) -> None:
         uids = self.selected_uids()
@@ -844,8 +918,5 @@ class FindingsPanel(QFrame):
             self.findingSelected.emit(uids[0])
 
     def _on_double_clicked(self, item: QTableWidgetItem) -> None:
-        check = self.table.item(item.row(), self.COL_CHECK)
-        if check is None:
-            return
-        checked = check.checkState() == Qt.Checked
-        check.setCheckState(Qt.Unchecked if checked else Qt.Checked)
+        """Doppelklick schaltet alle gleichlautenden Treffer um."""
+        self.toggle_same_text(item.row())

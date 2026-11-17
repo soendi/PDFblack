@@ -33,10 +33,11 @@ def test_erkennungseinstellungen_werden_gemerkt(qt_app, tmp_path):
     from pdfblack.ui.panels import ControlsPanel
 
     panel = ControlsPanel()
-    assert panel.cb_ch.isChecked() and panel.cb_date.isChecked() is False
+    # Die Datumsregel (Geburtsdatum) ist standardmaessig an.
+    assert panel.cb_ch.isChecked() and panel.cb_date.isChecked() is True
 
     panel.cb_ch.setChecked(False)
-    panel.cb_date.setChecked(True)
+    panel.cb_date.setChecked(False)
     panel.cb_person.setChecked(False)
     panel.ai_check.setChecked(False)
     panel.sensitivity.setCurrentIndex(0)
@@ -44,7 +45,7 @@ def test_erkennungseinstellungen_werden_gemerkt(qt_app, tmp_path):
 
     wieder = ControlsPanel()
     assert wieder.cb_ch.isChecked() is False
-    assert wieder.cb_date.isChecked() is True
+    assert wieder.cb_date.isChecked() is False
     assert wieder.cb_person.isChecked() is False
     assert wieder.ai_check.isChecked() is False
     assert wieder.sensitivity.currentIndex() == 0
@@ -55,11 +56,10 @@ def test_erkennungseinstellungen_werden_gemerkt(qt_app, tmp_path):
     # Die gespeicherten Werte landen auch in den Erkennungs-Optionen.
     options = wieder.read_options()
     assert "ch_postal" not in options.rule_groups
-    assert "date" in options.rule_groups
+    assert "date" not in options.rule_groups
     assert options.use_ai is False
 
     # Zuruecksetzen, damit folgende Laeufe nicht davon abhaengen.
     for box in wieder._auto_boxes().values():
         box.setChecked(True)
-    wieder.cb_date.setChecked(False)
     wieder.sensitivity.setCurrentIndex(1)

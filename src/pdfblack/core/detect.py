@@ -14,10 +14,11 @@ import re
 import tempfile
 import threading
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Callable
 
-from . import berufe, plz
+from . import berufe, geburtsdatum as geburtsdatum_core, plz
 from .extract import TextMap, open_document
 from .models import Category, Finding
 from .rules import Rule, compiled as compiled_rule, rules_for_groups
@@ -334,6 +335,72 @@ def compile_regexes(
     return result
 
 
+def _nur_geburtsdatum(
+    candidates: list[_Candidate], textmap: TextMap | None = None, total: int = 0
+) -> list[_Candidate]:
+    """Datumsangaben auf das Geburtsdatum zusammenstreichen.
+
+    Alle gefundenen Daten werden eingelesen; geschwaerzt wird nur das aelteste,
+    und auch das nur, wenn es mindestens 15 Jahre vor dem naechsten Datum
+    liegt. Manuell eingegebene Werte bleiben unangetastet. Wird das Datum in
+    anderer Schreibweise genannt (1.3.95 / 01. März 1995), wird auch das
+    gefunden und mitgeschwaerzt.
+    """
+    daten: list[tuple[_Candidate, date]] = []
+    uebrige: list[_Candidate] = []
+    for candidate in candidates:
+        if candidate.category is Category.DATE and candidate.entity != "MANUAL":
+            datum = geburtsdatum_core.als_datum(candidate.text)
+            if datum is None:
+                # Kein lesbares Datum: als Datum nicht brauchbar.
+                continue
+            daten.append((candidate, datum))
+        else:
+            uebrige.append(candidate)
+
+    ziel = geburtsdatum_core.geburtsdatum([datum for _, datum in daten])
+    if ziel is None:
+        return uebrige
+    for candidate, datum in daten:
+        if datum != ziel:
+            continue
+        candidate.category = Category.BIRTHDATE
+        candidate.source = "Geburtsdatum \u00b7 \u00e4ltestes Datum"
+        candidate.entity = "BIRTHDATE"
+        uebrige.append(candidate)
+
+    # Dasselbe Datum in jeder anderen Schreibweise im ganzen Dokument suchen.
+    if textmap is not None:
+        for index in range(total):
+            seite = textmap.page(index)
+            if not seite.text:
+                continue
+            for start, end in geburtsdatum_core.schreibweisen(seite.text, ziel):
+                uebrige.append(
+                    _Candidate(
+                        page=index,
+                        start=start,
+                        end=end,
+                        text=seite.text[start:end],
+                        category=Category.BIRTHDATE,
+                        source="Geburtsdatum \u00b7 andere Schreibweise",
+                        entity="BIRTHDATE",
+                        score=0.9,
+                        priority=PRIORITY_RULE,
+                    )
+                )
+    return uebrige
+
+
+def _rang(candidate: _Candidate) -> int:
+    """Das Geburtsdatum geht vor.
+
+    Andere Regeln erwischen daneben laengere Stellen ("Geboren am 01" als
+    Hausnummer und Strasse); das Geburtsdatum soll trotzdem stehen bleiben.
+    """
+    return 0 if candidate.category is Category.BIRTHDATE else 1
+
+
 def _resolve(candidates: list[_Candidate]) -> list[_Candidate]:
     """Ueberlappungen aufloesen: laengster Treffer gewinnt, dann Prioritaet."""
     per_page: dict[int, list[_Candidate]] = {}
@@ -343,7 +410,9 @@ def _resolve(candidates: list[_Candidate]) -> list[_Candidate]:
 
     accepted_all: list[_Candidate] = []
     for items in per_page.values():
-        items.sort(key=lambda c: (-(c.end - c.start), -c.priority, c.start))
+        items.sort(
+            key=lambda c: (_rang(c), -(c.end - c.start), -c.priority, c.start)
+        )
         taken: list[tuple[int, int]] = []
         for candidate in items:
             if any(candidate.start < end and start < candidate.end for start, end in taken):
@@ -689,6 +758,8 @@ def run_detection(
             for candidate in candidates
             if candidate.entity == "MANUAL" or not berufe.ist_beruf(candidate.text)
         ]
+        # Von allen Datumsangaben bleibt nur das Geburtsdatum uebrig.
+        candidates = _nur_geburtsdatum(candidates, textmap, total)
         for candidate in _resolve(candidates):
             page_text = textmap.page(candidate.page)
             start, end = _strip_span(page_text.text, candidate.start, candidate.end)

@@ -1,3 +1,14 @@
+## PDFblack 1.3.10
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.10
+
+- **Das Geburtsdatum ist das älteste Datum:** PDFblack liest beim Durchlauf alle Datumsangaben mit – `12.03.1985`, `12.3.85`, `12. März 1985`, `3. März 85` und ISO `2026-10-20` – und nimmt das älteste davon als Geburtsdatum. Voraussetzung: Es liegt mindestens 15 Jahre vor dem nächstjüngeren Datum. Erscheint es in der Trefferliste, steht dort die Kategorie **„Geburtsdatum"**. Das Häkchen „Geburtsdatum (ältestes Datum)" ist jetzt standardmäßig an, die Regel greift also beim Öffnen ohne weiteres Zutun.
+- **Nur das Geburtsdatum wird geschwärzt:** Rechnungs-, Ablauf- und Eintrittsdaten dienen nur noch der Einordnung des Geburtsdatums und erscheinen nicht mehr als Treffer. Gibt es nur ein Datum oder liegen die beiden ältesten näher als 15 Jahre beieinander, wird kein Datum geschwärzt.
+- **Alle Schreibweisen werden mitgeschwärzt:** Wird das Geburtsdatum als `1.3.95` erkannt, verschwinden auch `01. März 1995`, `1. 3. 1995`, `01.03.1995`, `1. Maerz 95` und `1995-03-01` im ganzen Dokument. Damit dabei keine andere Regel dazwischenfunkt („Geboren am 01" als Hausnummer), hat das Geburtsdatum beim Auflösen von Überlappungen Vorrang.
+- **Gleichlautende Treffer zusammen umschalten:** Rechtsklick oder Doppelklick auf einen Treffer schaltet alle Einträge mit demselben Namen auf einmal – angehakt → alle aus, abgehakt → alle an. Das gilt in der Trefferliste wie im Abschnitt „Nach Kategorie", und beide Listen bleiben dabei im Gleichklang.
+
 ## PDFblack 1.3.9
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -193,13 +204,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.6-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.10-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 116 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 129 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 
