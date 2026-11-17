@@ -1,3 +1,14 @@
+## PDFblack 1.3.5
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.5
+
+- **Jeder Kopfknopf bleibt klickbar:** Wurde ein Knopf verschoben, lag der ausgeblendete Text eines anderen Programms über seinem Logo – der Klick landete auf dem unsichtbaren Text und tat nichts. Betroffen war vor allem der blaue Knopf, wenn er neben dem roten stand. Die Blöcke haben jetzt eine feste Stapelreihenfolge (rot, blau, grün von unten nach oben), und Titel wie Untertitel nehmen keine Mausklicks mehr an. Alle drei Knöpfe sind damit in jeder Stellung erreichbar.
+- **Textebene verwerfen und per OCR neu aufsetzen:** Wird eine PDF mit vorhandener Textebene geladen, bietet PDFblack über der Vorschau an, die Textebene zu verwerfen und aus den Seitenbildern neu aufzubauen. Die Seiten gehen dafür als Bilder in eine temporäre Datei, die ausgelesen und danach gelöscht wird – die **Originaldatei bleibt unverändert**. Das Ergebnis lässt sich speichern oder direkt in PDFblack öffnen. Fehlt Tesseract, erscheint das Angebot nicht; PDFs ohne Text gehen weiterhin von selbst an PDFocr.
+- **Stapel in PDFcompare in Arbeitsreihenfolge:** Bewerbung, Lebenslauf, Arbeitszeugnisse und Diplome stehen jetzt in dieser Reihenfolge übereinander – so, wie die Unterlagen zusammengestellt werden.
+- **Beim Beenden nur eigene Dateien löschen:** Die Frage, ob geschwärzte Dateien gelöscht werden sollen, betrifft nur noch Dateien, die PDFblack in dieser Sitzung selbst geschwärzt hat. Selbst zugezogene Dateien bleiben unangetastet.
+
 ## PDFblack 1.3.4
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -143,13 +154,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.4-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.5-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 105 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 112 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

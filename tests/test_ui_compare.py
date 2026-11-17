@@ -359,7 +359,7 @@ def test_knoepfe_leeren_einzelne_listen(qt_app, settings_dir, tmp_path):
         "Leeren",
     ]
 
-    knoepfe[1].click()  # Lebenslauf
+    knoepfe[2].click()  # Lebenslauf
     assert view.life.count() == 0
     assert view.certs.count() == 1 and view.recent.count() == 2
 
@@ -388,9 +388,9 @@ def test_vier_stapel_gleich_hoch(qt_app, settings_dir, tmp_path):
     ]
     assert titel[:5] == [
         "Zuletzt geschwärzt",
+        "Bewerbung",
         "Lebenslauf",
         "Arbeitszeugnisse",
-        "Bewerbung",
         "Diplome",
     ]
 
@@ -413,7 +413,7 @@ def test_vier_stapel_gleich_hoch(qt_app, settings_dir, tmp_path):
     assert _pfade(view.diplome) == [_same(diplom)]
     assert view.recent.count() == 0
 
-    view.clear_buttons[3].click()  # Bewerbung leeren
+    view.clear_buttons[1].click()  # Bewerbung leeren
     assert view.application.count() == 0
     assert view.diplome.count() == 1
 
@@ -490,6 +490,8 @@ def test_schliessen_leert_listen_und_loescht_dateien(
     datei.write_bytes(b"%PDF-1.4\n")
     view = compare.CompareView()
     view.clear_all()
+    # Nur was PDFblack selbst geschwaerzt hat, darf geloescht werden.
+    view.remember(str(datei))
     mime, event = _drop_event(str(datei))
     view.life.dropEvent(event)
 
@@ -510,6 +512,54 @@ def test_schliessen_leert_listen_und_loescht_dateien(
     assert not ordner.exists()  # leerer Agent-Ordner wird entfernt
 
     view.deleteLater()
+    qt_app.processEvents()
+
+
+def test_schliessen_loescht_nur_geschwaerzte_dateien(
+    qt_app, settings_dir, tmp_path, monkeypatch
+):
+    """Selbst zugezogene Unterlagen bleiben beim Beenden liegen."""
+    from pdfblack.ui import compare
+
+    view = compare.CompareView()
+    view.clear_all()
+
+    geschwaerzt = tmp_path / "lebenslauf_geschwaerzt.pdf"
+    geschwaerzt.write_bytes(b"%PDF-1.4\n")
+    zugezogen = tmp_path / "zeugnis_original.pdf"
+    zugezogen.write_bytes(b"%PDF-1.4\n")
+
+    view.remember(str(geschwaerzt))
+    mime, event = _drop_event(str(zugezogen))
+    view.certs.dropEvent(event)
+
+    gefragt: list[str] = []
+
+    def frage(parent, titel, text, *args, **kwargs):
+        gefragt.append(text)
+        return QtWidgets.QMessageBox.Yes
+
+    monkeypatch.setattr(compare.QMessageBox, "question", frage)
+    view.cleanup_on_close(view)
+
+    assert gefragt and "1" in gefragt[0]  # nur die eine geschwaerzte Datei
+    assert not geschwaerzt.exists()
+    assert zugezogen.exists(), "zugezogene Datei wurde geloescht"
+
+    # Ohne geschwaerzte Datei wird gar nicht gefragt.
+    view2 = compare.CompareView()
+    view2.clear_all()
+    nur_zugezogen = tmp_path / "nur_zugezogen.pdf"
+    nur_zugezogen.write_bytes(b"%PDF-1.4\n")
+    mime, event = _drop_event(str(nur_zugezogen))
+    view2.life.dropEvent(event)
+    gefragt.clear()
+    view2.cleanup_on_close(view2)
+    assert gefragt == []
+    assert nur_zugezogen.exists()
+
+    for widget in (view, view2):
+        widget.deleteLater()
     qt_app.processEvents()
 
 

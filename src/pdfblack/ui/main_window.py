@@ -246,6 +246,11 @@ class _BrandBlock(QWidget):
         self.title.setObjectName("AppTitle")
         self.subtitle = QLabel(subtitle_text)
         self.subtitle.setObjectName("AppSubtitle")
+        # Der (ausgeblendete) Text darf keine Klicks schlucken: sonst liegt er
+        # ueber dem Logo eines anderen Programms, sobald sich die Bloecke
+        # verschieben.
+        for label in (self.title, self.subtitle):
+            label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         titles.addWidget(self.title)
         titles.addWidget(self.subtitle)
 
@@ -461,7 +466,11 @@ class AppHeader(QWidget):
             animation.setEndValue(end)
             animation.start()
 
-        self._blocks[program].raise_()
+        # Feste Stapelreihenfolge von links nach rechts: so liegt der Text
+        # eines Blocks nie ueber dem Logo des naechsten. Damit bleibt jeder
+        # Knopf in jeder Stellung anklickbar.
+        for name in ("pdfblack", "pdfcompare", "pdfocr"):
+            self._blocks[name].raise_()
 
     def set_program(self, program: str, animate: bool = True) -> None:
         self._program = program
@@ -517,6 +526,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self._path: str | None = None
+        self._rebuild_source: tuple[str, str | None] | None = None
         self._password: str | None = None
         self._findings: list[Finding] = []
         self._worker: DetectionWorker | None = None
@@ -621,6 +631,30 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stack.addWidget(self.dropzone)
         self.stack.addWidget(self.scroll)
+
+        # Hinweis beim Einlesen einer PDF mit vorhandener Textebene.
+        self.rebuild_bar = QWidget()
+        self.rebuild_bar.setObjectName("RebuildBar")
+        rebuild_layout = QHBoxLayout(self.rebuild_bar)
+        rebuild_layout.setContentsMargins(14, 8, 14, 8)
+        rebuild_layout.setSpacing(10)
+        self.rebuild_label = QLabel(
+            "Diese PDF hat bereits eine Textebene. Soll sie verworfen und per "
+            "OCR neu aufgebaut werden? Die Originaldatei bleibt unverändert."
+        )
+        self.rebuild_label.setObjectName("Hint")
+        self.rebuild_label.setWordWrap(True)
+        self.btn_rebuild = QPushButton("Textebene neu aufbauen")
+        self.btn_rebuild.setObjectName("Ghost")
+        self.btn_rebuild.setCursor(Qt.PointingHandCursor)
+        self.btn_keep = QPushButton("Behalten")
+        self.btn_keep.setObjectName("Ghost")
+        self.btn_keep.setCursor(Qt.PointingHandCursor)
+        rebuild_layout.addWidget(self.rebuild_label, 1)
+        rebuild_layout.addWidget(self.btn_rebuild)
+        rebuild_layout.addWidget(self.btn_keep)
+        self.rebuild_bar.hide()
+        black_layout.addWidget(self.rebuild_bar)
 
         self.findings_panel = FindingsPanel()
         self.findings_panel.setMinimumWidth(300)
@@ -812,6 +846,8 @@ class MainWindow(QMainWindow):
         self.btn_zoom_in.clicked.connect(lambda: self._set_zoom(self.canvas.zoom * 1.15))
         self.btn_zoom_out.clicked.connect(lambda: self._set_zoom(self.canvas.zoom / 1.15))
         self.btn_zoom_fit.clicked.connect(self._fit_width)
+        self.btn_rebuild.clicked.connect(self._rebuild_textlayer)
+        self.btn_keep.clicked.connect(self.rebuild_bar.hide)
 
         self.dropzone.browseRequested.connect(self._choose_file)
         self.dropzone.fileDropped.connect(self.load_pdf)
@@ -905,11 +941,44 @@ class MainWindow(QMainWindow):
         except Exception:  # noqa: BLE001 - besser in PDFblack bleiben als abbrechen
             ohne_text = False
         if ohne_text:
+            self._rebuild_source = None
+            self.rebuild_bar.hide()
             self.ocr_view.open_path(path, password, start=True)
             self._show_program("pdfocr")
             self.statusBar().showMessage(
                 "Kein Text zum Schwärzen – PDFocr liest den Scan aus.", 12000
             )
+        else:
+            self._offer_rebuild(path, password)
+
+    def _offer_rebuild(self, path: str, password: str | None) -> None:
+        """PDF mit Textebene: Neuaufbau per OCR anbieten."""
+        self._rebuild_source = None
+        self.rebuild_bar.hide()
+        if os.environ.get("PDFBLACK_NO_OCR_CHECK"):
+            return
+        try:
+            if not self.ocr_view.engine().available():
+                return
+        except Exception:  # noqa: BLE001 - ohne Tesseract kein Angebot
+            return
+        self._rebuild_source = (path, password)
+        self.rebuild_bar.show()
+
+    def _rebuild_textlayer(self) -> None:
+        """Textebene verwerfen und per OCR neu aufsetzen.
+
+        Die Originaldatei wird nur gelesen; PDFocr arbeitet auf einer
+        temporaeren Bilddatei und legt das Ergebnis neu ab.
+        """
+        if not self._rebuild_source:
+            return
+        path, password = self._rebuild_source
+        self._rebuild_source = None
+        self.rebuild_bar.hide()
+        self.ocr_view.open_path(path, password, ersetze_textebene=True)
+        self._show_program("pdfocr")
+        self.ocr_view.start()
 
     def _show_error(self, exc: Exception) -> None:
         QMessageBox.critical(

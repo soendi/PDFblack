@@ -355,3 +355,119 @@ def test_schnelles_hin_und_her_landet_in_der_letzten_wahl(window):
     assert window.workspace.currentWidget() is window.black_view
     assert _effect(window) is None
     assert window._program == "pdfblack"
+
+
+def test_jedes_logo_bleibt_klickbar(window, qt_app):
+    """Jeder Kopfknopf wird in jeder Stellung getroffen."""
+    header = window.header
+    for zustand in ("pdfblack", "pdfcompare", "pdfocr"):
+        header.set_program(zustand, animate=False)
+        qt_app.processEvents()
+        for block in (header.black, header.compare, header.ocr):
+            punkt = block.mapTo(header, block.logo.rect().center())
+            treffer = header.childAt(punkt)
+            assert treffer is block.logo, (zustand, block, treffer)
+
+
+def test_mittlerer_knopf_nach_dem_verschieben(window, qt_app):
+    """Blau bleibt anklickbar, wenn es neben rot steht."""
+    header = window.header
+    _click(header.ocr.logo)
+    assert _wait_until(lambda: window._program == "pdfocr")
+    QtTest.QTest.qWait(600)
+
+    punkt = header.compare.mapTo(header, header.compare.logo.rect().center())
+    ziel = header.childAt(punkt)
+    assert ziel is header.compare.logo
+    QtTest.QTest.mouseClick(ziel, QtCore.Qt.LeftButton)
+    assert _wait_until(lambda: window._program == "pdfcompare")
+
+
+def _text_pdf(path) -> None:
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Ein normaler Brief mit Text.", fontsize=12)
+    doc.save(str(path))
+    doc.close()
+
+
+def _fake_engine(monkeypatch):
+    from pdfblack.core.ocr import Word
+    from pdfblack.ui import ocr_view
+
+    class FakeEngine:
+        name = "Test"
+
+        def available(self) -> bool:
+            return True
+
+        def read_words(self, png, size):
+            return [Word("Brief", (300.0, 600.0, 420.0, 640.0))]
+
+    monkeypatch.setattr(ocr_view, "make_engine", lambda language: FakeEngine())
+
+
+def test_textebene_neu_aufsetzen_wird_angeboten(window, qt_app, tmp_path, monkeypatch):
+    """PDF mit Textebene: Angebot einblenden, Original bleibt unberuehrt."""
+    _fake_engine(monkeypatch)
+    text_pdf = tmp_path / "brief.pdf"
+    _text_pdf(text_pdf)
+    vorher = text_pdf.read_bytes()
+
+    window.load_pdf(str(text_pdf))
+    qt_app.processEvents()
+
+    assert window.rebuild_bar.isVisible()
+    assert "Textebene" in window.rebuild_label.text()
+
+    gestartet = []
+    monkeypatch.setattr(window.ocr_view, "start", lambda: gestartet.append(True))
+    _click(window.btn_rebuild)
+
+    assert not window.rebuild_bar.isVisible()
+    assert window.ocr_view._ersetze is True
+    assert window.ocr_view._path == str(text_pdf)
+    assert gestartet == [True]
+    assert _wait_until(lambda: window._program == "pdfocr")
+    # Die Originaldatei wurde nur gelesen.
+    assert text_pdf.read_bytes() == vorher
+
+
+def test_angebot_laesst_sich_ablehnen(window, qt_app, tmp_path, monkeypatch):
+    _fake_engine(monkeypatch)
+    text_pdf = tmp_path / "brief.pdf"
+    _text_pdf(text_pdf)
+
+    window.load_pdf(str(text_pdf))
+    qt_app.processEvents()
+    assert window.rebuild_bar.isVisible()
+
+    gestartet = []
+    monkeypatch.setattr(window.ocr_view, "start", lambda: gestartet.append(True))
+    _click(window.btn_keep)
+
+    assert not window.rebuild_bar.isVisible()
+    assert gestartet == []
+    assert window._program == "pdfblack"
+
+
+def test_ohne_tesseract_kein_angebot(window, qt_app, tmp_path, monkeypatch):
+    from pdfblack.ui import ocr_view
+
+    class Stumm:
+        name = "Stumm"
+
+        def available(self) -> bool:
+            return False
+
+    monkeypatch.setattr(ocr_view, "make_engine", lambda language: Stumm())
+    text_pdf = tmp_path / "brief.pdf"
+    _text_pdf(text_pdf)
+
+    window.load_pdf(str(text_pdf))
+    qt_app.processEvents()
+
+    assert not window.rebuild_bar.isVisible()
+    assert window._rebuild_source is None

@@ -174,6 +174,35 @@ def test_ocr_layer_laesst_sich_schwaerzen(tmp_path):
     assert max(proben) < 40, "im Bereich steht noch das Bild (helle Scan-Pixel)"
 
 
+def test_textebene_wird_verworfen_und_neu_aufgesetzt(tmp_path):
+    """PDF mit Textebene: Seiten werden gerastert und neu ausgelesen."""
+    quelle = tmp_path / "brief.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 160), "Dachdecker Meier", fontsize=24, fontname="helv")
+    woerter = page.get_text("words")
+    doc.save(str(quelle))
+    doc.close()
+    vorher = quelle.read_bytes()
+
+    ziel = tmp_path / "brief_neu.pdf"
+    ergebnis = ocr_pdf(
+        str(quelle), str(ziel), FakeEngine(woerter), ersetze_textebene=True
+    )
+
+    assert ergebnis.pages == 1
+    assert ergebnis.words == 2
+    # Nichts uebersprungen: die alte Textebene zaehlt nicht mehr.
+    assert ergebnis.skipped == []
+    # Die Originaldatei bleibt Byte fuer Byte unveraendert.
+    assert quelle.read_bytes() == vorher
+
+    doc = pymupdf.open(str(ziel))
+    assert "Dachdecker" in doc[0].get_text()
+    assert {span["type"] for span in doc[0].get_texttrace()} == {3}
+    doc.close()
+
+
 def test_tesseract_bekommt_tsv_als_option(tmp_path, monkeypatch):
     """Kein "tsv"-Argument: der mitgelieferte Sprachordner hat keine configs/.
 

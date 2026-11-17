@@ -30,6 +30,9 @@ from .panels import _settings
 from .review import ReviewDialog
 
 RECENT_KEY = "compare/recent"
+# Welche Dateien hat PDFblack selbst geschwaerzt? Nur die werden beim Beenden
+# zum Loeschen angeboten - zugezogene Unterlagen bleiben auf dem Rechner.
+REDACTED_KEY = "compare/geschwaerzt"
 LIFE_KEY = "compare/lebenslauf"
 CERT_KEY = "compare/arbeitszeugnisse"
 APPLICATION_KEY = "compare/bewerbung"
@@ -194,6 +197,13 @@ def _read_list(key: str) -> list[str]:
 
 def _write_list(key: str, paths: list[str]) -> None:
     _settings().setValue(key, list(paths))
+
+
+def _remember_redacted(path: str) -> None:
+    """Merken, dass PDFblack diese Datei selbst geschwaerzt hat."""
+    entries = [item for item in _read_list(REDACTED_KEY) if _norm(item) != _norm(path)]
+    entries.insert(0, str(path))
+    _write_list(REDACTED_KEY, entries[:MAX_RECENT])
 
 
 class PathList(QListWidget):
@@ -465,10 +475,11 @@ class CompareView(QWidget):
         self.certs = DropList()
         self.application = DropList()
         self.diplome = DropList()
+        # Reihenfolge wie in der Ansicht: Bewerbung, Lebenslauf, Zeugnisse, Diplome.
         self.stacks: tuple[DropList, ...] = (
+            self.application,
             self.life,
             self.certs,
-            self.application,
             self.diplome,
         )
         self.clear_buttons: list[QPushButton] = []
@@ -491,9 +502,9 @@ class CompareView(QWidget):
         right.setSpacing(8)
 
         for titel, liste in (
+            ("Bewerbung", self.application),
             ("Lebenslauf", self.life),
             ("Arbeitszeugnisse", self.certs),
-            ("Bewerbung", self.application),
             ("Diplome", self.diplome),
         ):
             kopf = QHBoxLayout()
@@ -660,6 +671,7 @@ class CompareView(QWidget):
     def remember(self, path: str) -> None:
         """Eine frisch geschwaerzte Datei oben in die Liste aufnehmen."""
         path = os.path.abspath(path)
+        _remember_redacted(path)
         zugeordnet = {_norm(item) for item in self._stack_paths()}
         if _norm(path) in zugeordnet:
             # Steht schon in einem Stapel - eine Datei ist nur einmal gelistet.
@@ -723,6 +735,7 @@ class CompareView(QWidget):
                 CERT_KEY,
                 APPLICATION_KEY,
                 DIPLOMA_KEY,
+                REDACTED_KEY,
             ):
                 _write_list(key, [])
             self._sync_allowed()
@@ -752,25 +765,34 @@ class CompareView(QWidget):
         self.message.emit("Aus der Liste entfernt – die Datei bleibt erhalten.")
 
     def cleanup_on_close(self, parent: QWidget) -> None:
-        """Beim Beenden die Listen leeren und nach den Dateien fragen."""
+        """Beim Beenden die Listen leeren und nach den geschwaerzten Dateien fragen.
+
+        Angeboten werden nur Dateien, die PDFblack selbst geschwaerzt hat;
+        selbst zugezogene Unterlagen bleiben unangetastet.
+        """
         paths = list(dict.fromkeys(self.recent.paths() + self._stack_paths()))
+        eigene = {_norm(item) for item in _read_list(REDACTED_KEY)}
+        geschwaerzt = [
+            path for path in paths if _norm(path) in eigene and os.path.isfile(path)
+        ]
         self.clear_all()
-        if not paths:
+        if not geschwaerzt:
             return
 
         antwort = QMessageBox.question(
             parent,
             "Listen geleert",
-            "Die Listen sind geleert.\n\nAuch die geschwärzten Dateien auf dem "
-            f"Rechner löschen ({len(paths)})? Kopien im Copilot-Übergabeordner "
-            "werden dann ebenfalls entfernt.",
+            "Die Listen sind geleert.\n\nAuch die von PDFblack geschwärzten "
+            f"Dateien auf dem Rechner löschen ({len(geschwaerzt)})? Selbst "
+            "zugezogene Unterlagen bleiben erhalten; Kopien im "
+            "Copilot-Übergabeordner werden mit entfernt.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
         if antwort != QMessageBox.Yes:
             return
 
-        _, fehler = delete_redacted(paths)
+        _, fehler = delete_redacted(geschwaerzt)
         if fehler:
             QMessageBox.warning(
                 parent,

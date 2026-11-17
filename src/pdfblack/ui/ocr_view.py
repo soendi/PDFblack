@@ -57,6 +57,7 @@ class _OcrWorker(QThread):
         engine,
         password: str | None,
         rechtschreibung: bool = True,
+        ersetze_textebene: bool = False,
     ) -> None:
         super().__init__()
         self._src = src
@@ -64,6 +65,7 @@ class _OcrWorker(QThread):
         self._engine = engine
         self._password = password
         self._rechtschreibung = rechtschreibung
+        self._ersetze_textebene = ersetze_textebene
 
     def _progress(self, index: int, total: int, message: str) -> bool:
         if self.isInterruptionRequested():
@@ -80,6 +82,7 @@ class _OcrWorker(QThread):
                 self._password,
                 progress=self._progress,
                 rechtschreibung=self._rechtschreibung,
+                ersetze_textebene=self._ersetze_textebene,
             )
         except Exception as exc:  # noqa: BLE001 - Fehler geht an die Oberflaeche
             if not self.isInterruptionRequested():
@@ -105,6 +108,7 @@ class OcrView(QWidget):
         self._result_path: str | None = None
         self._target_path: str | None = None
         self._temp_dir: str | None = None
+        self._ersetze = False
         self._build_ui()
         self._refresh()
 
@@ -242,14 +246,31 @@ class OcrView(QWidget):
 
     # -- Datei --------------------------------------------------------
 
-    def open_path(self, path: str, password: str | None = None, start: bool = False) -> None:
-        """Datei uebernehmen; optional die Erkennung sofort starten."""
+    def open_path(
+        self,
+        path: str,
+        password: str | None = None,
+        start: bool = False,
+        ersetze_textebene: bool = False,
+    ) -> None:
+        """Datei uebernehmen; optional die Erkennung sofort starten.
+
+        Mit ``ersetze_textebene`` wird eine vorhandene Textebene verworfen und
+        aus den gerenderten Seiten neu aufgesetzt. Die Datei selbst bleibt
+        unveraendert, das Ergebnis landet in einer neuen Datei.
+        """
         self._path = path
         self._password = password
         self._result_path = None
+        self._ersetze = ersetze_textebene
         self.text.setPlainText("")
         self.file_label.setText(os.path.basename(path))
-        self.file_info.setText("Bereit – „Text erkennen“ startet die Auswertung.")
+        self.file_info.setText(
+            "Bereit – die vorhandene Textebene wird verworfen und per OCR neu "
+            "aufgesetzt. Die Originaldatei bleibt unverändert."
+            if ersetze_textebene
+            else "Bereit – „Text erkennen“ startet die Auswertung."
+        )
         self.status_label.setText("")
         self._refresh()
         if start:
@@ -267,6 +288,7 @@ class OcrView(QWidget):
         self._path = None
         self._password = None
         self._result_path = None
+        self._ersetze = False
         self.text.setPlainText("")
         self.file_label.setText("Noch keine Datei gewählt")
         self.file_info.setText("PDF hierher ziehen oder „PDF öffnen …“ wählen.")
@@ -300,7 +322,10 @@ class OcrView(QWidget):
             return
         if self._temp_dir is None:
             self._temp_dir = tempfile.mkdtemp(prefix="pdfblack-ocr-")
-        ziel = str(Path(self._temp_dir) / f"{Path(self._path).stem}_ocr.pdf")
+        ziel = str(
+            Path(self._temp_dir)
+            / f"{Path(self._path).stem}_{'neu' if self._ersetze else 'ocr'}.pdf"
+        )
         self._target_path = ziel
         self.progress.setRange(0, 0)
         self.progress.show()
@@ -314,6 +339,7 @@ class OcrView(QWidget):
             engine,
             self._password,
             rechtschreibung=self.check_spelling.isChecked(),
+            ersetze_textebene=self._ersetze,
         )
         self._worker.progressed.connect(self._on_progress)
         self._worker.succeeded.connect(self._on_done)
@@ -344,12 +370,19 @@ class OcrView(QWidget):
             teile.append(
                 f"{len(result.skipped)} Seite(n) hatten bereits Text und blieben unverändert"
             )
+        if self._ersetze:
+            teile.append("Textebene neu aufgesetzt")
         meldung = " · ".join(teile)
         self.status_label.setText(meldung)
         self.file_info.setText(
             "Fertig – Textlayer ist unsichtbar hinter dem Bild. "
             "Jetzt speichern oder in PDFblack öffnen."
         )
+        if self._ersetze:
+            self.file_info.setText(
+                "Fertig – die Textebene wurde neu aufgesetzt; die Originaldatei "
+                "ist unverändert. Jetzt speichern oder in PDFblack öffnen."
+            )
         self.message.emit(meldung)
         self._refresh()
 

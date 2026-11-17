@@ -316,6 +316,35 @@ def place_words(page: pymupdf.Page, words: Sequence[Word], dpi: int = DPI) -> in
     return gesetzt
 
 
+def rasterize(
+    src: str,
+    dst: str,
+    password: str | None = None,
+    dpi: int = DPI,
+) -> int:
+    """Alle Seiten als reine Bilder unter ``dst`` schreiben - ohne Textebene.
+
+    Die Quelle wird nur gelesen. Das Ergebnis ist ein Scan aus den gerenderten
+    Seiten und damit die Grundlage, um eine vorhandene Textebene zu ersetzen.
+    """
+    doc = open_document(src, password)
+    neu = pymupdf.open()
+    try:
+        for page in doc:
+            pixmap = page.get_pixmap(dpi=dpi)
+            seite = neu.new_page(width=page.rect.width, height=page.rect.height)
+            seite.insert_image(seite.rect, stream=pixmap.tobytes("png"))
+        seiten = neu.page_count
+        if seiten:
+            neu.save(dst, garbage=3, deflate=True)
+        else:
+            neu.save(dst)
+    finally:
+        neu.close()
+        doc.close()
+    return seiten
+
+
 def ocr_pdf(
     src: str,
     dst: str,
@@ -324,18 +353,35 @@ def ocr_pdf(
     dpi: int = DPI,
     progress: Progress | None = None,
     rechtschreibung: bool = True,
+    ersetze_textebene: bool = False,
 ) -> OcrResult:
     """Textlayer fuer einen Scan schreiben und unter ``dst`` speichern.
 
     Seiten, die bereits Text enthalten, bleiben unangetastet. Mit
     ``rechtschreibung`` laeuft vor dem Einsetzen eine konservative
-    Woerterbuch-Korrektur ueber die erkannten Woerter.
+    Woerterbuch-Korrektur ueber die erkannten Woerter. Mit
+    ``ersetze_textebene`` werden vorhandene Textebenen verworfen: die Seiten
+    gehen als Bilder in eine temporaere Datei, die dann ausgelesen wird. Die
+    Quelldatei bleibt dabei unveraendert.
     """
     if not engine.available():
         raise OcrError(
             "Tesseract wurde nicht gefunden. Bitte Tesseract-OCR installieren "
             "oder den Pfad in der Umgebungsvariablen PDFBLACK_TESSERACT setzen."
         )
+    if ersetze_textebene:
+        with tempfile.TemporaryDirectory(prefix="pdfblack-ocr-") as ordner:
+            zwischen = Path(ordner) / "ohne-textebene.pdf"
+            rasterize(src, str(zwischen), password, dpi)
+            return ocr_pdf(
+                str(zwischen),
+                dst,
+                engine,
+                None,
+                dpi,
+                progress,
+                rechtschreibung,
+            )
     doc = open_document(src, password)
     ergebnis = OcrResult()
     try:
