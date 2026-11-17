@@ -134,6 +134,39 @@ def test_platzierung_ist_deckungsgleich():
     assert arten == {3}, arten
 
 
+def test_ocr_layer_behaelt_lesereihenfolge(tmp_path):
+    """Woerter und Zeilen stehen im Textlayer in Leserichtung.
+
+    PyMuPDF stellt jede Einfuegung mit ``overlay=False`` vor den bisherigen
+    Inhalt. Ohne Gegenmassnahme kommt die Seite rueckwaerts heraus, und die
+    Regeln finden keine Adresse ("6 Wolfsbachstr." statt "Wolfsbachstr. 6")
+    und kein Datum ("1990, Februar 5." statt "5. Februar 1990").
+    """
+    quelle = pymupdf.open()
+    page = quelle.new_page(width=595, height=842)
+    page.insert_text((72, 160), "Wolfsbachstr. 6", fontsize=14, fontname="helv")
+    page.insert_text((72, 182), "9436 Balgach", fontsize=14, fontname="helv")
+    woerter = page.get_text("words")
+    bild = page.get_pixmap(dpi=DPI).tobytes("png")
+    quelle.close()
+
+    scan = tmp_path / "scan.pdf"
+    dokument = pymupdf.open()
+    seite = dokument.new_page(width=595, height=842)
+    seite.insert_image(seite.rect, stream=bild)
+    dokument.save(str(scan))
+    dokument.close()
+
+    ziel = tmp_path / "scan_ocr.pdf"
+    ocr_pdf(str(scan), str(ziel), FakeEngine(woerter))
+
+    doc = pymupdf.open(str(ziel))
+    text = doc[0].get_text()
+    doc.close()
+    assert "Wolfsbachstr. 6" in text, text
+    assert "9436 Balgach" in text, text
+
+
 def test_ocr_layer_laesst_sich_schwaerzen(tmp_path):
     """Erst Textlayer, dann Schwaerzung: das Bild muss mit verschwinden."""
     scan = tmp_path / "scan.pdf"

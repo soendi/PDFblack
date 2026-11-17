@@ -1,3 +1,11 @@
+## PDFblack 1.3.18
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.18
+
+- **Die Textebene aus Scans steht in Leserichtung:** PDFocr legte die erkannten Wörter mit `overlay=False` hinter das Bild, und PyMuPDF stellt jede solche Einfügung **vor** den bisherigen Inhalt. Die Textebene kam dadurch rückwärts heraus – die Wörter jeder Zeile in umgekehrter Reihenfolge, die Zeilen von unten nach oben. Aus „5. Februar 1990“ wurde `1990, Februar 5.`, aus „Wolfsbachstr. 6“ wurde `6 Wolfsbachstr.`, aus „9436 Balgach“ wurde `Balgach 9436`, und eine IBAN zerfiel in Bruchstücke. In der Vorschau blieben deshalb genau die Stellen leer, die im Scan klar dastehen: Geburtsdatum, Adresse samt Hausnummer und PLZ/Ort, Bankverbindung – dazu kamen Treffer an falschen Stellen. Die Wörter werden jetzt rückwärts eingesetzt, damit sie im Inhalt wieder vorwärts stehen; die Textebene liest sich wie der Scan, und die Regeln finden Geburtsdatum, Adresse und IBAN vollständig. Bereits ausgelesene Scans bringen ihre alte Textebene mit – die Datei in PDFocr neu einlesen, damit der Text in Leserichtung steht.
+
 ## PDFblack 1.3.17
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -286,13 +294,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.17-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.18-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 283 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern (auch mit Ort dahinter, in getrennten Textblöcken und mit einem Datum davor), fünfstellige PLZ mit Ortschaft, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate samt ausgeschriebenen und abgekürzten Monaten („Febr.“, alle zwölf Monatsnamen, auch in getrennten Textfeldern), umbrochene IBANs, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 284 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern (auch mit Ort dahinter, in getrennten Textblöcken und mit einem Datum davor), fünfstellige PLZ mit Ortschaft, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate samt ausgeschriebenen und abgekürzten Monaten („Febr.“, alle zwölf Monatsnamen, auch in getrennten Textfeldern), umbrochene IBANs, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, die Leserichtung der aus Scans erzeugten Textebene, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

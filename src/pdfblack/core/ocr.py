@@ -258,7 +258,13 @@ def place_words(page: pymupdf.Page, words: Sequence[Word], dpi: int = DPI) -> in
     skalierung = dpi / 72.0
     rotation = page.rotation % 360
     gesetzt = 0
-    for word in words:
+    # ``overlay=False`` stellt jede Einfuegung *vor* den bisherigen Inhalt.
+    # PyMuPDF haengt also jedes weitere Wort davor, und die Seite kaeme
+    # woertlich rueckwaerts heraus: letzte Zeile oben, letztes Wort zuerst.
+    # Genau daran scheiterten Adressen und Daten im Scan ("6 Wolfsbachstr.",
+    # "Balgach 9436", "1990, Februar 5."). Rueckwaerts einsetzen kehrt die
+    # Reihenfolge im Inhalt wieder um - der Text steht dann in Leserichtung.
+    for word in reversed(words):
         text = _sauber(word.text)
         if not text:
             continue
