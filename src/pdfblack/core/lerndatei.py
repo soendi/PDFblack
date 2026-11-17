@@ -39,6 +39,10 @@ KONTEXT_ZEICHEN = 120
 
 ART_KORREKTUR = "korrektur"
 ART_KEIN_TREFFER = "kein_treffer"
+# Reine Wertkorrektur (OCR hat ein Zeichen verschluckt): bleibt in der
+# Lerndatei nachvollziehbar, taugt aber nicht als Musterbeispiel - sonst
+# entstuende aus "09.01.2022" ein zusaetzliches Datums-Muster.
+ART_WERTKORREKTUR = "wertkorrektur"
 KEIN_TREFFER = "kein Treffer"
 
 
@@ -100,11 +104,19 @@ def korrektur(
     keiner Kategorie. ``anzahl`` nennt, fuer wie viele Treffer mit demselben
     Text die Entscheidung gilt.
     """
+    # Gelernt wird der vom Benutzer bestaetigte Wert; der falsch gelesene steht
+    # als "text_original" daneben, damit die Entscheidung nachvollziehbar bleibt.
+    wert = " ".join((finding.korrigiert or finding.text).split())
+    art = ART_KEIN_TREFFER if nachher is None else ART_KORREKTUR
+    # Nur wenn ausschliesslich der Wert richtiggestellt wurde, aendert sich die
+    # Kategorie nicht: das ist ein Lesefehler, kein Musterbeispiel.
+    if finding.korrigiert and nachher is not None and vorher is nachher:
+        art = ART_WERTKORREKTUR
     eintrag = {
-        "art": ART_KEIN_TREFFER if nachher is None else ART_KORREKTUR,
+        "art": art,
         "zeit": datetime.now().isoformat(timespec="seconds"),
         "seite": finding.page + 1,
-        "text": " ".join(finding.text.split()),
+        "text": wert,
         "kategorie_vorher": "" if vorher is None else vorher.value,
         "kategorie_nachher": KEIN_TREFFER if nachher is None else nachher.value,
         "quelle": finding.source,
@@ -112,6 +124,10 @@ def korrektur(
         "score": round(finding.score, 2),
         "gleichnamige_treffer": anzahl,
     }
+    if finding.korrigiert:
+        eintrag["text_original"] = " ".join(finding.text.split())
+    # Der Kontext wird ueber den gefundenen Text gesucht - so steht er auch auf
+    # der Seite ("09.0.2022"), selbst wenn der Wert korrigiert wurde.
     eintrag.update(kontext(seite, finding.text))
     return eintrag
 
@@ -168,6 +184,9 @@ def regeln(datei: Path | None = None) -> dict[str, Category | None]:
     """
     gelernt: dict[str, Category | None] = {}
     for eintrag in eintraege(datei):
+        # Reine Wertkorrekturen sind nur zur Nachvollziehbarkeit gespeichert.
+        if eintrag.get("art") == ART_WERTKORREKTUR:
+            continue
         schluessel = _normalisiert(eintrag.get("text"))
         if not schluessel:
             continue
@@ -277,6 +296,7 @@ def exportieren(ziel: str | Path) -> int:
 
 
 __all__ = [
+    "ART_WERTKORREKTUR",
     "DATEI",
     "FORMAT",
     "KEIN_TREFFER",

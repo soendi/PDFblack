@@ -114,6 +114,14 @@ def _ablehnung(eintrag: dict, text: str, ziele: dict[str, set[str]]) -> str | No
 
 def auswerten(beispiele: list[dict]) -> Auswertung:
     """Beispiele in Muster, Einzelfaelle und offene Stellen sortieren."""
+    # Reine Wertkorrekturen stehen nur zur Nachvollziehbarkeit in der
+    # Lerndatei - als Muster taugen sie nicht ("09.01.2022" wuerde sonst ein
+    # zweites Datumsmuster erzeugen).
+    beispiele = [
+        eintrag
+        for eintrag in beispiele
+        if eintrag.get("art") != lerndatei.ART_WERTKORREKTUR
+    ]
     ergebnis = Auswertung(gesamt=len(beispiele))
 
     ziele: dict[str, set[str]] = {}

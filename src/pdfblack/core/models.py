@@ -61,6 +61,12 @@ class Finding:
     rects: list[Rect] = field(default_factory=list)
     source: str = ""
     entity: str = ""
+    # Hinweis der Plausibilitaetspruefung ("IBAN-Pruefziffer stimmt nicht").
+    # Aendert den Treffer nicht, nur die Anzeige.
+    hinweis: str = ""
+    # Vom Benutzer richtiggestellter Wert. Geschwaerzt wird weiterhin die
+    # gefundene Stelle; der korrigierte Wert steht nur in Liste und Lerndatei.
+    korrigiert: str = ""
     score: float = 1.0
     enabled: bool = True
     uid: int = 0
@@ -71,5 +77,5 @@ class Finding:
 
     @property
     def display_text(self) -> str:
-        text = " ".join(self.text.split())
+        text = " ".join((self.korrigiert or self.text).split())
         return text if len(text) <= 160 else text[:157] + "..."

@@ -56,6 +56,9 @@ def test_schreibweise_und_abkuerzung_passen_zusammen():
     assert strassen.normalisiere("Rue du Rhône") == strassen.normalisiere("Rue du Rhone")
     # "Bahnhofstr." ist im Verzeichnis als "Bahnhofstrasse" gefuehrt.
     assert strassen.ist_strasse("Bahnhofstr.")
+    # "Dorfpl." ebenso als "Dorfplatz".
+    assert strassen.ist_strasse("Dorfpl.")
+    assert strassen.ist_strasse("Dorfpl")
 
 
 def test_strassenname_ohne_hausnummer_wird_erkannt(tmp_path):

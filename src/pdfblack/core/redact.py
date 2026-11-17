@@ -13,7 +13,7 @@ import os
 import pymupdf
 
 from .extract import open_document
-from .models import Finding
+from .models import Finding, Rect
 
 BLACK = (0.0, 0.0, 0.0)
 
@@ -68,6 +68,26 @@ def _has_invisible_text(page: pymupdf.Page) -> bool:
     except Exception:  # noqa: BLE001 - lieber wie bisher weiterarbeiten
         return False
     return False
+
+
+def erweitere_rects(rects: list[Rect], text: str, zeichen: float = 1.0) -> list[Rect]:
+    """Rechtecke seitlich um rund ein Zeichen verbreitern.
+
+    Ein Treffer deckt nur die *erkannten* Zeichen. Hat OCR ein Zeichen
+    verschluckt ("09.0.2022" statt "09.01.2022"), kann sein Rest neben dem
+    Rechteck sichtbar bleiben. Nach einer Korrektur wird deshalb beidseitig um
+    ein Zeichen erweitert - lieber etwas zu viel als ein sichtbarer Rest.
+
+    Die Zeichenbreite ergibt sich aus dem breitesten Rechteck geteilt durch die
+    Zeichenzahl des Treffers.
+    """
+    laenge = max(1, len("".join(text.split())))
+    breiten = [(x1 - x0) / laenge for x0, _y0, x1, _y1 in rects]
+    zugeben = (max(breiten) if breiten else 0.0) * zeichen
+    return [
+        (max(0.0, x0 - zugeben), y0, x1 + zugeben, y1)
+        for x0, y0, x1, y1 in rects
+    ]
 
 
 def apply_redactions(

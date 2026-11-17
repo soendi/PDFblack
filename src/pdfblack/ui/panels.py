@@ -50,13 +50,19 @@ CATEGORY_GROUPS: dict[Category, str] = {
     Category.OTHER: "Sonstiges",
 }
 
-# Kategorien, die der Benutzer im Kontextmenü wählen kann: alle aus
-# CATEGORY_GROUPS ausser "Manuell" und "Regex" - das sind Herkünfte, keine
-# inhaltlichen Einordnungen.
-WAHL_KATEGORIEN: tuple[Category, ...] = tuple(
-    category
-    for category in CATEGORY_GROUPS
-    if category not in (Category.MANUAL, Category.REGEX)
+# Kategorien fuer das Kontextmenue: kommen aus dem gemeinsamen Baustein, den
+# auch das Dokument benutzt (hier nur weiter verfuegbar gemacht).
+from .treffermenue import (  # noqa: E402  - steht bei den Kategorien
+    AKTION_ALLE_FEHLALARM,
+    AKTION_ALLE_KATEGORIE,
+    AKTION_ALLE_UMSCHALTEN,
+    AKTION_FEHLALARM,
+    AKTION_HINWEIS_OK,
+    AKTION_KATEGORIE,
+    AKTION_KORRIGIEREN,
+    AKTION_UMSCHALTEN,
+    WAHL_KATEGORIEN,
+    treffer_menue,
 )
 
 SENSITIVITY = (
@@ -567,14 +573,18 @@ class FindingsPanel(QFrame):
     # Fehlalarm (uid, alle gleichen Texte).
     categoryChanged = Signal(int, object, bool)
     falsePositiveRequested = Signal(int, bool)
+    # Hinweis der Plausibilitaetspruefung bestaetigen bzw. Wert korrigieren.
+    hintAcknowledged = Signal(int)
+    correctionRequested = Signal(int)
 
-    COL_CHECK, COL_CATEGORY, COL_TEXT, COL_PAGE = 0, 1, 2, 3
+    COL_CHECK, COL_CATEGORY, COL_TEXT, COL_PAGE, COL_HINWEIS = 0, 1, 2, 3, 4
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("Findings")
         self.setMinimumWidth(280)
         self._updating = False
+        self._findings: list[Finding] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 12)
@@ -599,8 +609,10 @@ class FindingsPanel(QFrame):
         empty.setWordWrap(True)
         self.stack.addWidget(empty)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["", "Kategorie", "Text", "S."])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(
+            ["", "Kategorie", "Text", "S.", "Hinweis"]
+        )
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -613,9 +625,11 @@ class FindingsPanel(QFrame):
         header_view.setSectionResizeMode(self.COL_CATEGORY, QHeaderView.Fixed)
         header_view.setSectionResizeMode(self.COL_TEXT, QHeaderView.Stretch)
         header_view.setSectionResizeMode(self.COL_PAGE, QHeaderView.Fixed)
+        header_view.setSectionResizeMode(self.COL_HINWEIS, QHeaderView.Fixed)
         self.table.setColumnWidth(self.COL_CHECK, 26)
         self.table.setColumnWidth(self.COL_CATEGORY, 106)
         self.table.setColumnWidth(self.COL_PAGE, 34)
+        self.table.setColumnWidth(self.COL_HINWEIS, 190)
         self.table.itemChanged.connect(self._on_item_changed)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.itemDoubleClicked.connect(self._on_double_clicked)
@@ -678,6 +692,7 @@ class FindingsPanel(QFrame):
     # ------------------------------------------------------------------
 
     def set_findings(self, findings: list[Finding]) -> None:
+        self._findings = list(findings)
         self._updating = True
         self.table.blockSignals(True)
         self.table.setRowCount(len(findings))
@@ -697,7 +712,10 @@ class FindingsPanel(QFrame):
             self.table.setItem(row, self.COL_CATEGORY, category)
 
             text = QTableWidgetItem(finding.display_text)
-            text.setToolTip(f"{finding.display_text}\n\nQuelle: {finding.source}")
+            tooltip = f"{finding.display_text}\n\nQuelle: {finding.source}"
+            if finding.hinweis:
+                tooltip += f"\n\nHinweis: {finding.hinweis}"
+            text.setToolTip(tooltip)
             text.setData(Qt.UserRole, finding.uid)
             self.table.setItem(row, self.COL_TEXT, text)
 
@@ -705,6 +723,16 @@ class FindingsPanel(QFrame):
             page.setTextAlignment(Qt.AlignCenter)
             page.setData(Qt.UserRole, finding.uid)
             self.table.setItem(row, self.COL_PAGE, page)
+
+            # Unplausibler Wert: Hinweis neben dem Treffer nennen, damit die
+            # Stelle geprueft werden kann, ohne die Datei zu durchsuchen.
+            hinweis = QTableWidgetItem(
+                f"\u26a0 {finding.hinweis}" if finding.hinweis else ""
+            )
+            if finding.hinweis:
+                hinweis.setToolTip(finding.hinweis)
+            hinweis.setData(Qt.UserRole, finding.uid)
+            self.table.setItem(row, self.COL_HINWEIS, hinweis)
 
         self.table.blockSignals(False)
         self._updating = False
@@ -741,9 +769,10 @@ class FindingsPanel(QFrame):
                 child = QTreeWidgetItem([finding.display_text])
                 child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
                 child.setData(0, Qt.UserRole, finding.uid)
-                child.setToolTip(
-                    0, f"{finding.source} · Seite {finding.page_label}"
-                )
+                tooltip = f"{finding.source} · Seite {finding.page_label}"
+                if finding.hinweis:
+                    tooltip += f"\nHinweis: {finding.hinweis}"
+                child.setToolTip(0, tooltip)
                 child.setCheckState(0, Qt.Checked if finding.enabled else Qt.Unchecked)
                 top.addChild(child)
             top.setExpanded(True)
@@ -839,6 +868,15 @@ class FindingsPanel(QFrame):
         self.set_many_enabled(uids, enabled)
         return len(uids)
 
+    def _toggle_row(self, row: int) -> None:
+        """Einen einzelnen Treffer umschalten; das Häkchen meldet die Änderung."""
+        item = self.table.item(row, self.COL_CHECK)
+        if item is None:
+            return
+        item.setCheckState(
+            Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
+        )
+
     def _uid_of(self, row: int) -> int | None:
         """Die Kennung des Treffers in dieser Zeile."""
         item = self.table.item(row, self.COL_CHECK)
@@ -847,49 +885,23 @@ class FindingsPanel(QFrame):
         uid = item.data(Qt.UserRole)
         return uid if isinstance(uid, int) else None
 
-    def _menu_for(self, row: int) -> QMenu | None:
-        """Kontextmenü einer Zeile: Kategorie ändern, Fehlalarm, Umschalten.
+    def _finding(self, uid: int) -> Finding | None:
+        """Treffer zu einer Kennung (die Liste haelt ihre eigenen Treffer)."""
+        for finding in self._findings:
+            if finding.uid == uid:
+                return finding
+        return None
 
-        Die gewählte Aktion trägt ihr Ziel in ``data()``: ``"einer:<Kategorie>"``
-        für diesen Treffer, ``"alle:<Kategorie>"`` für alle Treffer mit
-        demselben Text, ``"fehlalarm"``, ``"alle-fehlalarm"`` oder
-        ``"umschalten"``.
-        """
-        text_item = self.table.item(row, self.COL_TEXT)
-        if text_item is None or self._uid_of(row) is None:
+    def _menu_for(self, row: int) -> QMenu | None:
+        """Kontextmenü einer Zeile - gebaut vom gemeinsamen Baustein."""
+        uid = self._uid_of(row)
+        if uid is None:
             return None
-        aktuell = self.table.item(row, self.COL_CATEGORY)
-        menu = QMenu(self)
-        kopf = menu.addAction("Diesen Treffer einordnen:")
-        kopf.setEnabled(False)
-        for category in WAHL_KATEGORIEN:
-            aktion = menu.addAction(category.value)
-            aktion.setCheckable(True)
-            aktion.setChecked(aktuell is not None and aktuell.text() == category.value)
-            aktion.setData(f"einer:{category.value}")
-        menu.addSeparator()
-        fehlalarm = menu.addAction("Kein Treffer (Fehlalarm)")
-        fehlalarm.setData("fehlalarm")
-        anzahl = len(self.same_text_uids(text_item.text()))
-        if anzahl >= 2:
-            menu.addSeparator()
-            kopf_alle = menu.addAction(
-                f"Für alle {anzahl} Treffer mit „{text_item.text()}“:"
-            )
-            kopf_alle.setEnabled(False)
-            unter = menu.addMenu("Kategorie für alle ändern")
-            for category in WAHL_KATEGORIEN:
-                aktion = unter.addAction(category.value)
-                aktion.setData(f"alle:{category.value}")
-            alle_fehlalarm = menu.addAction(
-                f"Alle {anzahl} als Fehlalarm abhaken"
-            )
-            alle_fehlalarm.setData("alle-fehlalarm")
-            umschalten = menu.addAction(
-                f"Alle „{text_item.text()}“ umschalten ({anzahl})"
-            )
-            umschalten.setData("umschalten")
-        return menu
+        ziel = self._finding(uid)
+        if ziel is None:
+            return None
+        gleichnamige = len(self.same_text_uids(ziel.display_text))
+        return treffer_menue(self, ziel, gleichnamige)
 
     def _show_menu(self, pos) -> None:
         """Kontextmenü der Trefferliste."""
@@ -904,19 +916,28 @@ class FindingsPanel(QFrame):
         if gewaehlt is None:
             return
         ziel = str(gewaehlt.data() or "")
-        if ziel == "umschalten":
+        if ziel == AKTION_ALLE_UMSCHALTEN:
             self.toggle_same_text(row)
+            return
+        if ziel == AKTION_UMSCHALTEN:
+            self._toggle_row(row)
             return
         uid = self._uid_of(row)
         if uid is None:
             return
-        if ziel in ("fehlalarm", "alle-fehlalarm"):
-            self.falsePositiveRequested.emit(uid, ziel == "alle-fehlalarm")
+        if ziel in (AKTION_FEHLALARM, AKTION_ALLE_FEHLALARM):
+            self.falsePositiveRequested.emit(uid, ziel == AKTION_ALLE_FEHLALARM)
+            return
+        if ziel == AKTION_HINWEIS_OK:
+            self.hintAcknowledged.emit(uid)
+            return
+        if ziel == AKTION_KORRIGIEREN:
+            self.correctionRequested.emit(uid)
             return
         bereich, _, wert = ziel.partition(":")
         for category in WAHL_KATEGORIEN:
             if category.value == wert:
-                self.categoryChanged.emit(uid, category, bereich == "alle")
+                self.categoryChanged.emit(uid, category, bereich == AKTION_ALLE_KATEGORIE)
                 return
 
     def selected_uids(self) -> list[int]:

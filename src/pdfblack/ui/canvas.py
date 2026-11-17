@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRect, QRectF, QSize, QSizeF, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QPoint,
+    QPointF,
+    QRect,
+    QRectF,
+    QSize,
+    QSizeF,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QWidget
 
@@ -18,12 +28,17 @@ class PdfCanvas(QWidget):
     findingActivated = Signal(int)  # uid
     regionDrawn = Signal(int, float, float, float, float)  # page, x0, y0, x1, y1
     wordActivated = Signal(int, str, float, float, float, float)  # Seite, Wort, Box
+    # Rechte Maustaste auf einer Fundstelle: uid und Bildschirmposition.
+    findingMenuRequested = Signal(int, QPoint)
     zoomRequested = Signal(float)
     ensureRequested = Signal(QRect)
 
     MARGIN = 26
     GAP = 20
     MAX_PIXMAPS = 10
+    # Treffer mit Pruefhinweis blinken in diesem Takt.
+    BLINK_MS = 480
+    BLINK_COLOR = QColor("#ffb020")
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -43,6 +58,13 @@ class PdfCanvas(QWidget):
         self._click_timer.setSingleShot(True)
         self._click_timer.setInterval(180)
         self._click_timer.timeout.connect(self._commit_click)
+        # Stellen, die der Benutzer noch pruefen muss (Hinweis der
+        # Plausibilitaetspruefung, korrigierter Wert), blinken im Dokument.
+        self._pruefen: list[Finding] = []
+        self._blink_on = False
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setInterval(self.BLINK_MS)
+        self._blink_timer.timeout.connect(self._blink_step)
         self.setMouseTracking(True)
         self.setCursor(Qt.CrossCursor)
 
@@ -63,6 +85,11 @@ class PdfCanvas(QWidget):
             return 0.0
         return float(self._doc[0].rect.width)
 
+    def _stop_blinking(self) -> None:
+        self._blink_timer.stop()
+        self._blink_on = False
+        self._pruefen = []
+
     def load(self, path: str, password: str | None = None) -> None:
         # Erst das neue Dokument oeffnen: schlaegt das fehl, bleibt die bisher
         # angezeigte Datei unveraendert und benutzbar.
@@ -71,6 +98,7 @@ class PdfCanvas(QWidget):
             self._doc.close()
         self._doc = doc
         self._findings = []
+        self._stop_blinking()
         self._selected_uid = 0
         self._pixmaps.clear()
         self._relayout(resize_height=True)
@@ -81,6 +109,7 @@ class PdfCanvas(QWidget):
             self._doc.close()
         self._doc = None
         self._findings = []
+        self._stop_blinking()
         self._page_sizes = []
         self._page_pos = []
         self._pixmaps.clear()
@@ -93,6 +122,22 @@ class PdfCanvas(QWidget):
 
     def set_findings(self, findings: list[Finding]) -> None:
         self._findings = list(findings)
+        self._pruefen = [finding for finding in findings if finding.hinweis]
+        if self._pruefen:
+            if not self._blink_timer.isActive():
+                self._blink_on = True
+                self._blink_timer.start()
+        else:
+            self._blink_timer.stop()
+            self._blink_on = False
+        self.update()
+
+    def needs_review(self) -> int:
+        """Anzahl der Treffer, die noch geprueft werden muessen."""
+        return len(self._pruefen)
+
+    def _blink_step(self) -> None:
+        self._blink_on = not self._blink_on
         self.update()
 
     def set_selected(self, uid: int) -> None:
@@ -238,6 +283,28 @@ class PdfCanvas(QWidget):
                     painter.setBrush(Qt.NoBrush)
                     painter.drawRect(box)
 
+            if finding.hinweis:
+                self._paint_review(painter, page, finding)
+
+    def _paint_review(
+        self, painter: QPainter, page: int, finding: Finding
+    ) -> None:
+        """Blinkender Rahmen fuer Stellen, die noch geprueft werden muessen."""
+        for rect in finding.rects:
+            box = self._to_canvas(page, rect).adjusted(-3.0, -3.0, 3.0, 3.0)
+            if self._blink_on:
+                fill = QColor(self.BLINK_COLOR)
+                fill.setAlpha(105)
+                painter.fillRect(box, fill)
+                pen = QPen(self.BLINK_COLOR)
+                pen.setWidthF(4.0)
+            else:
+                pen = QPen(QColor(255, 176, 32, 130))
+                pen.setWidthF(1.8)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(box)
+
     # ------------------------------------------------------------------
     # Koordinaten
     # ------------------------------------------------------------------
@@ -308,6 +375,18 @@ class PdfCanvas(QWidget):
     # ------------------------------------------------------------------
     # Maus und Rad
     # ------------------------------------------------------------------
+
+    def contextMenuEvent(self, event) -> None:  # noqa: N802
+        """Rechte Maustaste auf einer Fundstelle oeffnet das Treffer-Menue."""
+        if not self._doc:
+            event.ignore()
+            return
+        uid = self._finding_at(event.pos())
+        if not uid:
+            event.ignore()
+            return
+        self.findingMenuRequested.emit(uid, event.globalPos())
+        event.accept()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() != Qt.LeftButton or not self._doc:

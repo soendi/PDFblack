@@ -13,9 +13,10 @@ import os
 import re
 import tempfile
 import threading
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable, Mapping
 
 from . import (
     berufe,
@@ -23,6 +24,7 @@ from . import (
     lerndatei,
     lernregeln,
     namen,
+    plausibel,
     plz,
     strassen,
 )
@@ -733,6 +735,148 @@ def name_tokens(text: str) -> set[str]:
     return tokens
 
 
+_WORT = re.compile(r"[^\W\d_][\w'\u2019-]*", re.UNICODE)
+
+
+def _ein_schritt_entfernt(a: str, b: str) -> bool:
+    """Unterscheiden sich zwei Woerter um genau einen Buchstaben?"""
+    if a.casefold() == b.casefold() or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(1 for x, y in zip(a, b) if x.casefold() != y.casefold()) == 1
+    kurz, lang = (a, b) if len(a) < len(b) else (b, a)
+    i = j = 0
+    fehler = 0
+    while i < len(kurz) and j < len(lang):
+        if kurz[i].casefold() == lang[j].casefold():
+            i += 1
+            j += 1
+            continue
+        fehler += 1
+        j += 1
+        if fehler > 1:
+            return False
+    return True
+
+
+def _ist_eigenstaendiger_begriff(wort: str, kategorie: Category) -> bool:
+    """Steht das Wort selbst fuer einen eigenen Begriff dieser Art?
+
+    "Mueller" und "Moeller" sind beide Nachnamen, "Rosenweg" und "Rosenwerg"
+    nicht dasselbe. Solche Woerter duerfen nicht als Lesefehler des anderen
+    gelten.
+    """
+    if kategorie is Category.PERSON:
+        return (
+            namen.ist_name(wort)
+            or strassen.ist_strasse(wort)
+            or berufe.ist_berufswort(wort)
+        )
+    if kategorie is Category.ADDRESS:
+        return strassen.ist_strasse(wort) or namen.ist_name(wort)
+    if kategorie is Category.POSTAL:
+        return (
+            plz.ist_ort(wort)
+            or strassen.ist_strasse(wort)
+            or namen.ist_name(wort)
+        )
+    return False
+
+
+def _vorname_lesefehler(
+    begriff: str, wort: str, kategorie: Category, anzahl: int, zahl: int
+) -> bool:
+    """Schlaegt ein sehr haeufiger Vorname eine gueltige Vornamen-Schreibweise?
+
+    Steht "Joana" mindestens zehnmal im Dokument und "Joanna" genau einmal,
+    ist das ein Lesefehler - obwohl "Joanna" selbst ein Vorname ist. Nur fuer
+    Vornamen und nur bei eindeutiger Mehrheit; Strassen- und Berufswoerter
+    bleiben eigenstaendig.
+    """
+    if kategorie is not Category.PERSON or anzahl < 10 or zahl != 1:
+        return False
+    if not (namen.ist_vorname(begriff) and namen.ist_vorname(wort)):
+        return False
+    return not (strassen.ist_strasse(wort) or berufe.ist_berufswort(wort))
+
+
+def schreibvarianten(
+    page_texts: Iterable[str], begriffe: Mapping[str, Category]
+) -> dict[str, Category]:
+    """Seltene Schreibweisen bereits erkannter Begriffe in diesem Dokument.
+
+    Ein Name, eine Strasse oder ein Ort steht in einem Zeugnis mehrfach. Wird
+    er an einer Stelle um einen Buchstaben falsch gelesen ("Witler" neben
+    10-mal "Wittler"), bliebe genau diese Stelle ungeschwaerzt. Deshalb werden
+    die Woerter des Dokuments gezaehlt: Eine Schreibweise mit einem Buchstaben
+    Abstand und hoechstens einem Drittel der Treffer gilt als Lesefehler
+    desselben Begriffs.
+
+    Zurueck kommt die Variante mit ihrer Kategorie. Mehrwortige Begriffe
+    ("Rue du Lac") werden nicht gezaehlt.
+    """
+    haeufigkeit: Counter[str] = Counter()
+    formen: dict[str, str] = {}
+    for text in page_texts:
+        if not text:
+            continue
+        for treffer in _WORT.finditer(text):
+            wort = treffer.group(0)
+            schluessel = wort.casefold()
+            haeufigkeit[schluessel] += 1
+            formen.setdefault(schluessel, wort)
+
+    varianten: dict[str, Category] = {}
+    for begriff, kategorie in begriffe.items():
+        if " " in begriff:
+            continue
+        anzahl = haeufigkeit.get(begriff.casefold(), 0)
+        if anzahl < 3:
+            continue
+        for schluessel, zahl in haeufigkeit.items():
+            if zahl >= anzahl or zahl * 3 > anzahl:
+                continue
+            wort = formen[schluessel]
+            if len(wort) < 4 or not wort[0].isupper():
+                continue
+            if wort[0].casefold() != begriff[0].casefold():
+                continue
+            if not _ein_schritt_entfernt(wort, begriff):
+                continue
+            if _ist_eigenstaendiger_begriff(
+                wort, kategorie
+            ) and not _vorname_lesefehler(begriff, wort, kategorie, anzahl, zahl):
+                continue
+            varianten.setdefault(wort, kategorie)
+    return varianten
+
+
+def namensvarianten(page_texts: Iterable[str], pool: Iterable[str]) -> set[str]:
+    """Schreibvarianten erkannter Namen (Kurzform von schreibvarianten)."""
+    begriffe = {name: Category.PERSON for name in pool}
+    return set(schreibvarianten(page_texts, begriffe))
+
+
+# Regel-Kennungen, deren Treffer einen Strassennamen liefern.
+_STRASSEN_ENTITIES = {"street", "street_name", "street_split", "street_name_split"}
+_HAUSNUMMER_REST = re.compile(r"[ \t]*\d.*$", re.DOTALL)
+_PLZ_ORT = re.compile(r"(?:CH-)?\d{4,5}[ \t]+(.+)$")
+
+
+def _strassenname(text: str) -> str:
+    """Strassenname ohne Hausnummer ("Haupt strasse 56 a" -> "Haupt strasse")."""
+    return _HAUSNUMMER_REST.sub("", text).strip()
+
+
+def _ortsname(text: str) -> str:
+    """Ort aus "82140 Olching" oder aus einem einzelnen Ortswort."""
+    roh = text.strip()
+    treffer = _PLZ_ORT.search(roh)
+    if treffer:
+        return treffer.group(1).strip(" .,;")
+    return roh.strip(" .,;") if " " not in roh else ""
+
+
 def _strip_span(text: str, start: int, end: int) -> tuple[int, int]:
     raw = text[start:end]
     lead = len(raw) - len(raw.lstrip())
@@ -919,6 +1063,71 @@ def run_detection(
                             )
                         )
 
+        # --- Schreibvarianten ----------------------------------------
+        # Steht ein Name, eine Strasse oder ein Ort mehrfach im Dokument, gilt
+        # eine seltene Schreibweise mit einem Buchstaben Abstand als Lesefehler
+        # desselben Begriffs ("Witler" neben 10-mal "Wittler", "Olchin" neben
+        # "Olching"). Sonst bliebe genau diese Stelle offen, obwohl der Begriff
+        # im Dokument bekannt ist.
+        begriffe: dict[str, Category] = {
+            token: Category.PERSON for token in name_pool
+        }
+        for candidate in candidates:
+            if candidate.entity in _STRASSEN_ENTITIES:
+                name = _strassenname(candidate.text)
+                if len(name) >= 4:
+                    begriffe.setdefault(name, Category.ADDRESS)
+            elif candidate.category is Category.POSTAL:
+                ort = _ortsname(candidate.text)
+                if len(ort) >= 4:
+                    begriffe.setdefault(ort, Category.POSTAL)
+
+        varianten = schreibvarianten(
+            (textmap.page(index).text for index in range(total)), begriffe
+        )
+        if varianten:
+            LOGGER.debug("Schreibvarianten: %s", varianten)
+        # Namensvarianten laufen ueber die Namensuebertragung weiter unten,
+        # Strassen und Orte werden hier direkt gesucht.
+        name_pool |= {
+            wort for wort, kategorie in varianten.items() if kategorie is Category.PERSON
+        }
+        andere = {
+            wort.casefold(): kategorie
+            for wort, kategorie in varianten.items()
+            if kategorie is not Category.PERSON
+        }
+        if andere:
+            muster = "|".join(
+                rf"(?<!\w){re.escape(wort)}(?!\w)"
+                for wort in sorted(andere, key=len, reverse=True)
+            )
+            varianten_pattern = re.compile(muster, re.IGNORECASE | re.UNICODE)
+            for index in range(total):
+                page_text = textmap.page(index)
+                if not page_text.text:
+                    continue
+                for match in varianten_pattern.finditer(page_text.text):
+                    start, end = match.span()
+                    if end <= start:
+                        continue
+                    kategorie = andere.get(match.group(0).casefold())
+                    if kategorie is None:
+                        continue
+                    candidates.append(
+                        _Candidate(
+                            page=index,
+                            start=start,
+                            end=end,
+                            text=match.group(0),
+                            category=kategorie,
+                            source=f"Variante \u00b7 {kategorie.value} im Dokument",
+                            entity="VARIANT",
+                            score=0.95,
+                            priority=PRIORITY_NAME,
+                        )
+                    )
+
         # --- Namensuebertragung --------------------------------------
         # Damit der Name auch in der Adresszeile verschwindet, werden alle
         # Namensbestandteile im gesamten Dokument gesucht.
@@ -988,17 +1197,20 @@ def run_detection(
             if not rects:
                 continue
             uid += 1
+            # Treffer ueber einen Zeilenumbruch (PLZ und Ort in getrennten
+            # Zeilen) fuer Anzeige und Endkontrolle zusammenfassen.
+            treffer_text = " ".join(page_text.text[start:end].split())
             findings.append(
                 Finding(
-                    # Treffer ueber einen Zeilenumbruch (PLZ und Ort in
-                    # getrennten Zeilen) fuer Anzeige und Endkontrolle
-                    # zusammenfassen.
-                    text=" ".join(page_text.text[start:end].split()),
+                    text=treffer_text,
                     category=candidate.category,
                     page=candidate.page,
                     rects=rects,
                     source=candidate.source,
                     entity=candidate.entity,
+                    hinweis=plausibel.hinweis(
+                        treffer_text, candidate.category, candidate.entity
+                    ),
                     score=round(candidate.score, 2),
                     enabled=True,
                     uid=uid,

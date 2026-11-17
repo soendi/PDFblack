@@ -44,13 +44,87 @@ class Rule:
     validate: Callable[[str], bool] | None = None
 
 
-_STREET_SUFFIX = (
-    r"(?:stra\u00dfe|strasse|str|weg|allee|platz|ring|gasse|ufer|damm|steig|berg|"
-    r"feld|hof|markt|park|graben|wall|chaussee|pfad|zeile|koppel|kamp|siedlung|"
-    r"viertel|tor|grund|blick|hain)"
+# Eine Liste fuer alle Strassenmuster. Ausgeschriebene und abgekuerzte Form
+# duerfen nicht getrennt gepflegt werden, sonst laufen sie auseinander.
+_STREET_SUFFIXE = (
+    "stra\u00dfe",
+    "strasse",
+    "str",
+    "weg",
+    "allee",
+    "platz",
+    # "Hauptpl." ist die Abkuerzung von "Hauptplatz".
+    "pl",
+    "ring",
+    "gasse",
+    "ufer",
+    "damm",
+    "steig",
+    "berg",
+    "feld",
+    "hof",
+    "markt",
+    "park",
+    "graben",
+    "wall",
+    "chaussee",
+    "pfad",
+    "zeile",
+    "koppel",
+    "kamp",
+    "siedlung",
+    "viertel",
+    "tor",
+    "grund",
+    "blick",
+    "hain",
 )
+# Laengste Endung zuerst, damit "Hauptstrasse" nicht als "Hauptstr" + "asse" gilt.
+_STREET_SUFFIXE_SORTIERT = tuple(sorted(_STREET_SUFFIXE, key=len, reverse=True))
+_STREET_SUFFIX = "(?:" + "|".join(_STREET_SUFFIXE_SORTIERT) + ")"
 _STREET_WORD = rf"[A-Z\u00c4\u00d6\u00dc][\w\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df.\-']*{_STREET_SUFFIX}"
 _HOUSE_NO = r"\d{1,4}\s?[a-zA-Z]?(?:[-/]\d{1,4})?"
+
+# Der Scanner trennt den Strassennamen manchmal auf ("Haupt strasse 56 a",
+# "Haupt str. 56 a"). Geprueft wird der zusammengesetzte Name, damit
+# "Am Weg 5" keine Adresse wird.
+_STREET_STEM = rf"[A-Z\u00c4\u00d6\u00dc][\w\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df.\-']{{2,}}"
+# Endungen, die im Verzeichnis praktisch nicht vorkommen (unter 50 Eintraegen)
+# und als eigenstaendiges Wort zu allgemein sind ("der Markt", "der Damm"):
+# fuer die aufgeteilte Schreibweise bleiben sie aussen vor. Haeufige Endungen
+# bleiben drin, auch wenn sie Alltagsworte sind - "Dorf platz 7" und
+# "Haupt weg 5" sind echte Adressen (Dorfplatz, Hauptweg stehen im Verzeichnis).
+_STREET_SUFFIX_ZU_ALLGEMEIN = frozenset(
+    {
+        "markt",
+        "damm",
+        "pfad",
+        "tor",
+        "ufer",
+        "wall",
+        "hain",
+        "chaussee",
+        "siedlung",
+        "viertel",
+        "zeile",
+        "koppel",
+        "kamp",
+    }
+)
+_STREET_SUFFIX_WORT = (
+    "(?:"
+    + "|".join(
+        endung
+        for endung in _STREET_SUFFIXE_SORTIERT
+        if endung not in _STREET_SUFFIX_ZU_ALLGEMEIN
+    )
+    + r")\.?"
+)
+# Ohne Ruecksicht auf Gross-/Kleinschreibung: "HAUPT STRASSE 56 a" ist
+# dieselbe Adresse wie "Haupt strasse 56 a".
+_STREET_GETRENNT = re.compile(
+    rf"^({_STREET_STEM})[ \t]+({_STREET_SUFFIX_WORT})", re.IGNORECASE
+)
 
 # Hausnummer hinter einem Strassennamen ohne deutsches Suffix
 # ("Rue du Lac 12", "Unter den Linden 5", "Hafenpromenade 3a").
@@ -399,6 +473,15 @@ def _strasse_bekannt(text: str) -> bool:
     )
 
 
+def _strasse_getrennt_bekannt(text: str) -> bool:
+    """Getrennt geschriebener Strassenname: zusammen pruefen ("Haupt strasse")."""
+    treffer = _STREET_GETRENNT.match(text)
+    if treffer is None:
+        return False
+    zusammen = treffer.group(1) + treffer.group(2).replace(".", "")
+    return _strasse_bekannt(zusammen)
+
+
 RULES: tuple[Rule, ...] = (
     Rule(
         key="street",
@@ -427,6 +510,33 @@ RULES: tuple[Rule, ...] = (
         # endet nicht wie eine Strasse, "Park" ist eine.
         pattern=rf"(?<![\w]){_STREET_WORD}(?![\w])",
         validate=_strasse_bekannt,
+    ),
+    Rule(
+        key="street_split",
+        label="Stra\u00dfe (aufgeteilt) + Hausnummer",
+        group="address",
+        category=Category.ADDRESS,
+        # "Haupt strasse 56 a" und "Haupt str. 56 a": Das Verzeichnis kennt nur
+        # die zusammengeschriebene Form, deshalb wird der Treffer zusammengesetzt
+        # geprueft.
+        pattern=(
+            rf"(?<!\w){_STREET_STEM}[ \t]+{_STREET_SUFFIX_WORT}"
+            rf"(?![A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df])[ \t]*{_HOUSE_NO}"
+            rf"(?!\w){_HOUSE_END}"
+        ),
+        validate=_strasse_getrennt_bekannt,
+    ),
+    Rule(
+        key="street_name_split",
+        label="Stra\u00dfenname (aufgeteilt)",
+        group="address",
+        category=Category.ADDRESS,
+        # Ohne Hausnummer: "wohnhaft in der Haupt strasse". Dieselbe Pruefung
+        # am zusammengesetzten Namen wie bei "street_split", damit
+        # "Am Weg" keine Strasse wird. Mit Hausnummer gewinnt der laengere
+        # Treffer aus "street_split".
+        pattern=rf"(?<!\w){_STREET_STEM}[ \t]+{_STREET_SUFFIX_WORT}(?![\w])",
+        validate=_strasse_getrennt_bekannt,
     ),
     Rule(
         key="house_number",

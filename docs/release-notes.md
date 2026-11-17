@@ -1,3 +1,17 @@
+## PDFblack 1.3.15
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.15
+
+- **Plausibilitätsprüfung mit Hinweisen:** Jeder gefundene Wert wird gegengeprüft, bevor du ihn schwärzt – ohne dass sich an der Schwärzung etwas ändert. IBANs laufen über die Mod-97-Prüfziffer („IBAN-Pruefziffer stimmt nicht“), Daten müssen ein echtes Kalenderdatum sein („09.0.2022“ fällt auf, ebenso der 31. Februar oder ein Jahr vor 1900), vierstellige PLZ werden samt Ortschaft gegen die amtliche Liste geprüft („PLZ 9999 steht nicht im Schweizer Verzeichnis“, „„Olching“ gehoert nicht zur PLZ 8200“) und Strassen gegen das Strassenverzeichnis, auch in aufgeteilter Schreibweise. Fünfstellige PLZ aus Deutschland und Österreich bleiben ungeprüft – dafür führt das Programm keine Liste und meldet deshalb auch nichts. Die Hinweise stehen in einer eigenen Spalte der Trefferliste und im Tooltip.
+- **Blinkende Prüfstellen:** Treffer mit einem solchen Hinweis – und Stellen mit korrigiertem Wert – pulsieren im Dokument in Warn-Orange (rund zweimal pro Sekunde, mit halbtransparenter Fläche). Die Stelle ist damit sofort zu finden, auch über der farbigen Kategorie-Markierung. Sobald du den Hinweis quittierst oder den Wert korrigierst, hört das Blinken auf; sind keine Prüfstellen mehr übrig, stoppt es ganz.
+- **Rechtsklick-Menü im PDF:** Ein Rechtsklick auf eine Fundstelle im Dokument öffnet dasselbe Menü wie in der Trefferliste: schwärzen oder nicht schwärzen, Kategorie ändern (mit Häkchen an der aktuellen), „Kein Treffer (Fehlalarm)“, bei einem Prüfhinweis „Hinweis geprüft – trotzdem schwärzen“ und „Wert korrigieren …“. Ab zwei gleichen Stellen kommen die Aktionen für alle hinzu: Kategorie für alle ändern, alle als Fehlalarm abhaken, alle umschalten. Beide Menüs baut derselbe Baustein, sie können also nicht mehr auseinanderlaufen.
+- **Wert korrigieren mit eigener Lern-Art:** Hat OCR eine Ziffer verschluckt, lässt sich der Wert im Menü richtigstellen. Der neue Wert wird erneut geprüft („31.02.2022“ wird abgelehnt), erscheint in der Liste und in der Lerndatei; geschwärzt wird weiterhin die gefundene Stelle, ihr Rechteck dabei um rund ein Zeichen je Seite verbreitert, damit kein Rest der verschluckten Ziffer stehen bleibt – die Stelle behält dafür den Hinweis „Wert korrigiert – Stelle im PDF prüfen“. Solche Korrekturen landen als eigener Eintragstyp `wertkorrektur` in der Lerndatei: nachvollziehbar im Lernfenster, aber ohne Beitrag zur Musterableitung.
+- **Namens-, Strassen- und Ortsvarianten:** Steht ein Begriff mehrfach im Dokument, gilt eine seltene Schreibweise mit genau einem Buchstaben Abstand als Lesefehler desselben Begriffs – „Witler“ neben zehnmal „Wittler“ wird mitgeschwärzt, ebenso „Olchin“ neben „Olching“ oder „Säagmühlstrasse“ neben „Sägmühlstrasse“. Voraussetzung sind mindestens drei Treffer des richtigen Begriffs und höchstens ein Drittel davon für die Variante. Was selbst im Namens-, Strassen- oder Berufsverzeichnis steht, bleibt eigenständig: „Müller“ und „Möller“ verschmelzen nicht, ebenso zwei echte Ortschaften.
+- **Vornamen-Ausnahme:** Steht ein Vorname mindestens zehnmal im Dokument und eine Schreibweise mit einem Buchstaben Abstand genau einmal, gilt sie auch dann als Lesefehler, wenn sie selbst ein Vorname ist („Joana“ zehnmal, „Joanna“ einmal). Neun Treffer oder zwei Varianten reichen nicht – so bleibt eine zweite Person im Dokument unangetastet.
+- **Aufgeteilte Strassen:** Der Scanner trennt Strassennamen manchmal auf. „Haupt strasse 56 a“, „Haupt str. 56 a“ und „Dorf pl. 7“ werden jetzt gefunden – mit Hausnummer und ohne („wohnhaft in der Haupt strasse“). Geprüft wird immer der zusammengesetzte Name am Verzeichnis, deshalb wird „Am Weg 5“ nicht zur Adresse. Die Endungen stammen aus einer einzigen Liste, aus der sich die getrennte Schreibweise ableitet; `str`/`str.` stehen für „Strasse“, `pl.` für „Platz“, und Endungen, die im Verzeichnis praktisch nicht vorkommen, bleiben als Einzelwort aussen vor.
+
 ## PDFblack 1.3.14
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -249,13 +263,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.14-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.15-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 198 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Lerndatei (Korrekturen, Fehlalarme, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 256 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

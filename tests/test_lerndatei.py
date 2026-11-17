@@ -14,6 +14,37 @@ from pdfblack.core import lerndatei  # noqa: E402
 from pdfblack.core.models import Category, Finding  # noqa: E402
 
 
+def test_reine_wertkorrektur_hat_eigenen_art():
+    finding = _finding(text="09.0.2022", category=Category.DATE, korrigiert="09.01.2022")
+    eintrag = lerndatei.korrektur(
+        finding, "Zeitraum bis 09.0.2022", Category.DATE, Category.DATE
+    )
+
+    assert eintrag["art"] == lerndatei.ART_WERTKORREKTUR
+    assert eintrag["text"] == "09.01.2022"
+    assert eintrag["text_original"] == "09.0.2022"
+
+
+def test_wertkorrektur_gilt_nicht_als_gelernte_regel(tmp_path):
+    """Auch die vorlaeufige Regelanwendung bleibt unberuehrt."""
+    datei = tmp_path / "lerndatei.jsonl"
+    finding = _finding(
+        text="09.0.2022", category=Category.DATE, korrigiert="09.01.2022"
+    )
+    lerndatei.merken(
+        lerndatei.korrektur(finding, "", Category.DATE, Category.DATE), datei
+    )
+    assert lerndatei.eintraege(datei), "Eintrag fehlt"
+    assert lerndatei.regeln(datei) == {}
+
+
+def test_kategoriewechsel_bleibt_eine_korrektur():
+    """Nur der reine Wertfall bekommt den eigenen Typ."""
+    finding = _finding(text="09.0.2022", category=Category.ID, korrigiert="09.01.2022")
+    eintrag = lerndatei.korrektur(finding, "", Category.ID, Category.DATE)
+    assert eintrag["art"] == "korrektur"
+
+
 def _finding(**felder) -> Finding:
     vorgabe = {
         "text": "Muster AG",

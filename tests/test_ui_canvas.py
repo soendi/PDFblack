@@ -245,3 +245,79 @@ def test_doppelklick_im_kategorienbaum_schaltet_alle_gleichnamigen(qt_app):
 
     panel.deleteLater()
     qt_app.processEvents()
+
+
+def test_pruefstellen_blinken(qt_app):
+    """Treffer mit Hinweis blinken im Dokument, ohne Hinweis nicht."""
+    from pdfblack.core.models import Category, Finding
+    from pdfblack.ui.canvas import PdfCanvas
+
+    canvas = PdfCanvas()
+    canvas.resize(420, 420)
+
+    canvas.set_findings(
+        [
+            Finding(
+                text="09.0.2022",
+                category=Category.DATE,
+                page=0,
+                rects=[(60.0, 60.0, 120.0, 74.0)],
+                uid=1,
+                hinweis="kein gueltiges Datum",
+            )
+        ]
+    )
+    assert canvas.needs_review() == 1
+    assert canvas._blink_timer.isActive()
+
+    erster_takt = canvas._blink_on
+    canvas._blink_step()
+    assert canvas._blink_on is not erster_takt
+
+    canvas.set_findings(
+        [Finding(text="12.04.2021", category=Category.DATE, page=0, uid=2)]
+    )
+    assert canvas.needs_review() == 0
+    assert not canvas._blink_timer.isActive()
+    assert canvas._blink_on is False
+
+
+def test_rechte_maustaste_meldet_die_fundstelle(qt_app, tmp_path):
+    """Rechtsklick auf einen Treffer meldet ihn, daneben nicht."""
+    from PySide6.QtGui import QContextMenuEvent
+
+    from pdfblack.core.models import Category, Finding
+    from pdfblack.ui.canvas import PdfCanvas
+
+    pdf = tmp_path / "wort.pdf"
+    _word_pdf(pdf)
+
+    canvas = PdfCanvas()
+    canvas.resize(420, 420)
+    canvas.load(str(pdf))
+
+    doc = pymupdf.open(str(pdf))
+    box = tuple(doc[0].get_text("words")[0][:4])
+    doc.close()
+
+    canvas.set_findings(
+        [Finding(text="Musterkasse", category=Category.ID, page=0, rects=[box], uid=5)]
+    )
+    gesehen: list[int] = []
+    canvas.findingMenuRequested.connect(lambda uid, pos: gesehen.append(uid))
+
+    punkt = canvas._to_canvas(0, box).center().toPoint()
+    canvas.contextMenuEvent(
+        QContextMenuEvent(
+            QContextMenuEvent.Mouse, punkt, canvas.mapToGlobal(punkt)
+        )
+    )
+    assert gesehen == [5]
+
+    daneben = QtCore.QPoint(2, 2)
+    canvas.contextMenuEvent(
+        QContextMenuEvent(
+            QContextMenuEvent.Mouse, daneben, canvas.mapToGlobal(daneben)
+        )
+    )
+    assert gesehen == [5]

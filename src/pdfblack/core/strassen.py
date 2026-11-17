@@ -83,14 +83,18 @@ def quellen() -> list[str]:
 def _kandidaten(schluessel: str) -> tuple[str, ...]:
     """Schreibweisen zu einem Namen.
 
-    In PDFs steht die Strasse oft abgekuerzt ("Bahnhofstr. 5"); das Verzeichnis
-    fuehrt sie ausgeschrieben. Beide Formen werden verglichen.
+    In PDFs steht die Strasse oft abgekuerzt ("Bahnhofstr. 5", "Dorfpl. 7");
+    das Verzeichnis fuehrt sie ausgeschrieben. Beide Formen werden verglichen.
     """
     kandidaten = [schluessel]
     if schluessel.endswith("str") and len(schluessel) > 5:
         kandidaten.append(schluessel + "asse")
     elif schluessel.endswith("strasse") and len(schluessel) > 8:
         kandidaten.append(schluessel[:-4])
+    if schluessel.endswith("pl") and len(schluessel) > 5:
+        kandidaten.append(schluessel + "atz")
+    elif schluessel.endswith("platz") and len(schluessel) > 7:
+        kandidaten.append(schluessel[:-3])
     return tuple(dict.fromkeys(kandidaten))
 
 

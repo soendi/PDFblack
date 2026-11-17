@@ -45,11 +45,11 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, APP_TAGLINE, APP_VERSION
-from ..core import ablage, lerndatei, ocr as ocr_core
+from ..core import ablage, lerndatei, ocr as ocr_core, plausibel
 from ..core.detect import DetectionOptions, run_detection
 from ..core.extract import TextMap, open_document
 from ..core.models import Category, Finding, PdfPasswordError
-from ..core.redact import apply_redactions
+from ..core.redact import apply_redactions, erweitere_rects
 from ..core.updater import (
     Release,
     asset_for,
@@ -65,6 +65,18 @@ from .ocr_view import OcrView
 from .preferences import PreferencesDialog
 from .canvas import PdfCanvas
 from .panels import ControlsPanel, DropZone, FindingsPanel
+from .treffermenue import (
+    AKTION_ALLE_FEHLALARM,
+    AKTION_ALLE_KATEGORIE,
+    AKTION_ALLE_UMSCHALTEN,
+    AKTION_FEHLALARM,
+    AKTION_HINWEIS_OK,
+    AKTION_KATEGORIE,
+    AKTION_KORRIGIEREN,
+    AKTION_UMSCHALTEN,
+    WAHL_KATEGORIEN,
+    treffer_menue,
+)
 
 COMPARE_NAME = "PDFcompare"
 COMPARE_TAGLINE = "Vergleicht PDFs miteinander und gibt eine Zusammenfassung aus"
@@ -883,6 +895,9 @@ class MainWindow(QMainWindow):
         self.findings_panel.removeRequested.connect(self._remove_selected)
         self.findings_panel.categoryChanged.connect(self._set_finding_category)
         self.findings_panel.falsePositiveRequested.connect(self._mark_false_positive)
+        self.findings_panel.hintAcknowledged.connect(self._quittiere_hinweis)
+        self.findings_panel.correctionRequested.connect(self._korrigiere_wert)
+        self.canvas.findingMenuRequested.connect(self._zeige_treffer_menue)
 
         self.scroll.verticalScrollBar().valueChanged.connect(self._update_page_label)
 
@@ -1263,6 +1278,124 @@ class MainWindow(QMainWindow):
                 "gespeichert."
             )
         self.statusBar().showMessage(meldung)
+
+    def _zeige_treffer_menue(self, uid: int, position) -> None:
+        """Rechte Maustaste im PDF: alle Aktionen zu dieser Fundstelle.
+
+        Das Menue baut derselbe Baustein wie in der Trefferliste
+        (``treffer_menue``), damit beide nicht auseinanderlaufen.
+        """
+        ziel = self._finding(uid)
+        if ziel is None:
+            return
+        menu = treffer_menue(self, ziel, len(self._gleichnamige(ziel)))
+        gewaehlt = menu.exec(position)
+        if gewaehlt is None:
+            return
+        aktion = str(gewaehlt.data() or "")
+        if aktion == AKTION_UMSCHALTEN:
+            self._toggle_finding(uid)
+        elif aktion == AKTION_ALLE_UMSCHALTEN:
+            self._toggle_gleichnamige(uid)
+        elif aktion == AKTION_FEHLALARM:
+            self._mark_false_positive(uid)
+        elif aktion == AKTION_ALLE_FEHLALARM:
+            self._mark_false_positive(uid, True)
+        elif aktion == AKTION_HINWEIS_OK:
+            self._quittiere_hinweis(uid)
+        elif aktion == AKTION_KORRIGIEREN:
+            self._korrigiere_wert(uid)
+        elif aktion.startswith(f"{AKTION_KATEGORIE}:"):
+            self._waehle_kategorie(uid, aktion, False)
+        elif aktion.startswith(f"{AKTION_ALLE_KATEGORIE}:"):
+            self._waehle_kategorie(uid, aktion, True)
+
+    def _waehle_kategorie(self, uid: int, aktion: str, alle: bool) -> None:
+        """Kategorie aus dem Menuedaten-Wert ``kategorie:<X>`` setzen."""
+        name = aktion.split(":", 1)[1]
+        for category in WAHL_KATEGORIEN:
+            if category.value == name:
+                self._set_finding_category(uid, category, alle)
+                return
+
+    def _toggle_gleichnamige(self, uid: int) -> None:
+        """Alle Treffer mit demselben Text an- oder abschalten."""
+        ziel = self._finding(uid)
+        if ziel is None:
+            return
+        neu = not ziel.enabled
+        betroffen = self._gleichnamige(ziel)
+        for finding in betroffen:
+            finding.enabled = neu
+        self._sync_findings()
+        self.statusBar().showMessage(
+            f"{len(betroffen)} Treffer \u201e{ziel.display_text}\u201c "
+            f"{'geschw\u00e4rzt' if neu else 'nicht geschw\u00e4rzt'}."
+        )
+
+    def _quittiere_hinweis(self, uid: int) -> None:
+        """Hinweis der Plausibilitaetspruefung bestaetigen - Treffer bleibt aktiv."""
+        ziel = self._finding(uid)
+        if ziel is None:
+            return
+        ziel.hinweis = ""
+        ziel.enabled = True
+        if "Hinweis geprüft" not in ziel.source:
+            ziel.source = f"{ziel.source} · Hinweis geprüft"
+        self._sync_findings()
+        self.statusBar().showMessage(
+            f"„{ziel.display_text}“ wird trotz Hinweis geschwärzt."
+        )
+
+    def _korrigiere_wert(self, uid: int) -> None:
+        """Falsch gelesenen Wert richtigstellen.
+
+        Geschwaerzt wird weiterhin die gefundene Stelle im PDF; der korrigierte
+        Wert erscheint in der Liste und in der Lerndatei. Bleibt auch der neue
+        Wert unplausibel, wird das gemeldet und nichts uebernommen.
+        """
+        ziel = self._finding(uid)
+        if ziel is None:
+            return
+        vorher = ziel.display_text
+        neu, bestaetigt = QInputDialog.getText(
+            self,
+            "Wert korrigieren",
+            f"Gefunden: {vorher}\n\nRichtiger Wert (geschwärzt wird weiterhin "
+            "die gefundene Stelle):",
+            text=vorher,
+        )
+        if not bestaetigt:
+            return
+        neu = " ".join(neu.split())
+        if not neu or neu == vorher:
+            return
+        rest = plausibel.hinweis(neu, ziel.category, ziel.entity)
+        if rest:
+            QMessageBox.warning(
+                self,
+                "Wert korrigieren",
+                f"Der Wert ist weiterhin unplausibel:\n{rest}",
+            )
+            return
+        ziel.korrigiert = neu
+        # Ein verschlucktes Zeichen kann neben dem gefundenen Rechteck stehen:
+        # die Flaeche wird um ein Zeichen verbreitert und die Stelle bleibt als
+        # Pruefhinweis stehen.
+        ziel.rects = erweitere_rects(ziel.rects, ziel.text)
+        ziel.hinweis = "Wert korrigiert \u2013 Stelle im PDF pr\u00fcfen"
+        ziel.enabled = True
+        if "vom Benutzer" not in ziel.source:
+            ziel.source = f"{ziel.source} · vom Benutzer korrigiert"
+        # Der bestaetigte Wert geht als Lernbeispiel mit: lerndatei.korrektur
+        # schreibt finding.korrigiert, der Fund bleibt als "text_original".
+        self._lerne(ziel, ziel.category, ziel.category, 1)
+        self._sync_findings()
+        self.statusBar().showMessage(
+            f"„{vorher}“ als „{neu}“ übernommen und als Lernbeispiel gespeichert; "
+            "die Schwärzung wurde um ein Zeichen verbreitert \u2013 bitte die "
+            "Stelle im PDF prüfen."
+        )
 
     def _lerne(
         self,

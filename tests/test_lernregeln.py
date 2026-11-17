@@ -34,6 +34,41 @@ def _beispiel(text: str, vorher: Category, nachher: Category | None, **rest) -> 
     return eintrag
 
 
+def _wertkorrektur(text: str, original: str) -> dict:
+    """Ein Eintrag, wie ihn eine reine Wertkorrektur schreibt."""
+    return {
+        "art": lerndatei.ART_WERTKORREKTUR,
+        "text": text,
+        "text_original": original,
+        "kategorie_vorher": Category.DATE.value,
+        "kategorie_nachher": Category.DATE.value,
+        "quelle": "Muster \u00b7 Datum",
+        "entity": "date",
+        "seite": 1,
+    }
+
+
+def test_wertkorrektur_wird_kein_muster():
+    auswertung = lernregeln.auswerten([_wertkorrektur("09.01.2022", "09.0.2022")])
+    assert auswertung.gesamt == 0
+    assert auswertung.muster == []
+    assert auswertung.einzelfaelle == []
+    # Sie soll auch nicht als offener Fall im Lernfenster auftauchen.
+    assert auswertung.offen == []
+
+
+def test_wertkorrektur_stoert_andere_beispiele_nicht():
+    auswertung = lernregeln.auswerten(
+        [
+            _wertkorrektur("09.01.2022", "09.0.2022"),
+            _beispiel("IAO-4711", Category.ID, Category.PERSON),
+            _beispiel("IAO-2233", Category.ID, Category.PERSON),
+        ]
+    )
+    assert auswertung.gesamt == 2
+    assert any("IAO" in vorschlag.muster for vorschlag in auswertung.muster)
+
+
 def test_gleicher_aufbau_wird_ein_muster():
     auswertung = lernregeln.auswerten(
         [
