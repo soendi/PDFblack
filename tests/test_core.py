@@ -397,8 +397,9 @@ def test_datum_oben_rechts_ist_kein_plz_ort(tmp_path, monkeypatch):
     found = texts(result.findings)
     assert not [f for f in result.findings if f.category is Category.POSTAL], found
     # Ein einzelnes Datum ist kein Geburtsdatum (der Abstand zum naechsten
-    # Datum laesst sich nicht pruefen) - geschwaerzt wird es deshalb nicht.
-    assert "20.10.2026" not in found
+    # Datum laesst sich nicht pruefen) - es bleibt aber als Datum stehen.
+    datum = [finding for finding in result.findings if finding.text == "20.10.2026"]
+    assert [finding.category for finding in datum] == [Category.DATE]
 
 
 def test_unbekanntes_wort_ist_keine_ortschaft(tmp_path, monkeypatch):

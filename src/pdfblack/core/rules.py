@@ -486,6 +486,15 @@ RULES: tuple[Rule, ...] = (
             rf"(?<![\d\w]){_DATE_ANY}(?![\d\w])"
         ),
     ),
+    Rule(
+        key="year",
+        label="Jahr",
+        group="year",
+        category=Category.YEAR,
+        # Allein stehende Jahreszahl ("2025", "1998"). Steht sie in einem
+        # vollstaendigen Datum, gewinnt die laengere Datumsregel.
+        pattern=r"(?<![\d\w])(?:19|20)\d{2}(?![\d\w])",
+    ),
 )
 
 _COMPILED: dict[str, re.Pattern[str]] = {
@@ -512,4 +521,5 @@ ALL_GROUPS: tuple[str, ...] = (
     "contact",
     "bank",
     "date",
+    "year",
 )

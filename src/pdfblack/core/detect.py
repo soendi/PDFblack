@@ -340,13 +340,15 @@ def compile_regexes(
 def _nur_geburtsdatum(
     candidates: list[_Candidate], textmap: TextMap | None = None, total: int = 0
 ) -> list[_Candidate]:
-    """Datumsangaben auf das Geburtsdatum zusammenstreichen.
+    """Geburtsdatum bestimmen; alle anderen Daten bleiben als Treffer.
 
-    Alle gefundenen Daten werden eingelesen; geschwaerzt wird nur das aelteste,
-    und auch das nur, wenn es mindestens 15 Jahre vor dem naechsten Datum
-    liegt. Manuell eingegebene Werte bleiben unangetastet. Wird das Datum in
-    anderer Schreibweise genannt (1.3.95 / 01. März 1995), wird auch das
-    gefunden und mitgeschwaerzt.
+    Alle gefundenen Daten werden eingelesen; das aelteste gilt als
+    Geburtsdatum, wenn es mindestens 15 Jahre vor dem naechsten Datum liegt.
+    Die uebrigen Daten bleiben als Kategorie "Datum" in der Trefferliste und
+    lassen sich dort einzeln abwaehlen - nichts verschwindet still, nur weil
+    es kein Geburtsdatum ist. Manuell eingegebene Werte bleiben unangetastet.
+    Wird das Datum in anderer Schreibweise genannt (1.3.95 / 01. März 1995),
+    wird auch das gefunden und mitgeschwaerzt.
     """
     daten: list[tuple[_Candidate, geburtsdatum_core.Angabe]] = []
     uebrige: list[_Candidate] = []
@@ -369,6 +371,8 @@ def _nur_geburtsdatum(
             jahre.extend(geburtsdatum_core.jahreszahlen(textmap.page(index).text))
 
     ziel = geburtsdatum_core.geburtsdatum([angabe for _, angabe in daten], jahre)
+    # Ohne Geburtsdatum bleiben alle Daten normale Datums-Treffer.
+    uebrige.extend(candidate for candidate, _ in daten)
     if ziel is None:
         return uebrige
     for candidate, angabe in daten:
@@ -377,7 +381,6 @@ def _nur_geburtsdatum(
         candidate.category = Category.BIRTHDATE
         candidate.source = "Geburtsdatum \u00b7 \u00e4ltestes Datum"
         candidate.entity = "BIRTHDATE"
-        uebrige.append(candidate)
 
     # Dasselbe Datum in jeder anderen Schreibweise im ganzen Dokument suchen.
     if textmap is not None:
@@ -769,7 +772,8 @@ def run_detection(
             for candidate in candidates
             if candidate.entity == "MANUAL" or not berufe.ist_beruf(candidate.text)
         ]
-        # Von allen Datumsangaben bleibt nur das Geburtsdatum uebrig.
+        # Das Geburtsdatum wird zusaetzlich markiert; alle anderen Daten
+        # bleiben als Datums-Treffer stehen.
         candidates = _nur_geburtsdatum(candidates, textmap, total)
         for candidate in _resolve(candidates):
             page_text = textmap.page(candidate.page)

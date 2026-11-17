@@ -65,7 +65,7 @@ def test_geburtsdatum_ist_das_aelteste_mit_15_jahren_abstand():
     assert geburtsdatum.geburtsdatum([]) is None
 
 
-def test_erkennung_schwaerzt_nur_das_geburtsdatum(tmp_path):
+def test_erkennung_markiert_das_geburtsdatum_und_zeigt_alle_daten(tmp_path):
     from pdfblack.core.detect import DetectionOptions, run_detection
 
     quelle = _pdf(
@@ -83,12 +83,17 @@ def test_erkennung_schwaerzt_nur_das_geburtsdatum(tmp_path):
         for finding in ergebnis.findings
         if finding.category in (Category.DATE, Category.BIRTHDATE)
     ]
-    assert [finding.text for finding in daten] == ["Geburtsdatum: 12.03.1985"]
-    assert daten[0].category is Category.BIRTHDATE
-    assert "ältestes Datum" in daten[0].source
+    geburt = [finding for finding in daten if finding.category is Category.BIRTHDATE]
+    assert [finding.text for finding in geburt] == ["Geburtsdatum: 12.03.1985"]
+    assert "ältestes Datum" in geburt[0].source
+    # Die uebrigen Daten bleiben als Datum in der Trefferliste.
+    assert {finding.text for finding in daten if finding.category is Category.DATE} == {
+        "01.09.2020",
+        "20.10.2026",
+    }
 
 
-def test_erkennung_ohne_15_jahre_abstand_schwaerzt_kein_datum(tmp_path):
+def test_erkennung_ohne_15_jahre_abstand_zeigt_daten_ohne_geburtsdatum(tmp_path):
     from pdfblack.core.detect import DetectionOptions, run_detection
 
     quelle = _pdf(
@@ -102,7 +107,9 @@ def test_erkennung_ohne_15_jahre_abstand_schwaerzt_kein_datum(tmp_path):
         for finding in ergebnis.findings
         if finding.category in (Category.DATE, Category.BIRTHDATE)
     ]
-    assert daten == []
+    # Kein Geburtsdatum - die Daten selbst bleiben aber sichtbar.
+    assert [finding for finding in daten if finding.category is Category.BIRTHDATE] == []
+    assert {finding.text for finding in daten} == {"01.03.2020", "20.10.2026"}
 
 
 def test_monatsname_ist_ein_datum(tmp_path):
@@ -203,7 +210,7 @@ def test_erkennung_schwaerzt_einziges_datum_mit_juengerer_jahreszahl(tmp_path):
     assert treffer == ["Geburtsdatum 05/02/1990"]
 
 
-def test_erkennung_ohne_juengere_jahreszahl_schwaerzt_nichts(tmp_path):
+def test_erkennung_ohne_juengere_jahreszahl_bleibt_datums_treffer(tmp_path):
     from pdfblack.core.detect import DetectionOptions, run_detection
 
     quelle = _pdf(
@@ -212,11 +219,14 @@ def test_erkennung_ohne_juengere_jahreszahl_schwaerzt_nichts(tmp_path):
     )
     ergebnis = run_detection(str(quelle), DetectionOptions(use_ai=False, rule_groups=("date",)))
 
-    assert [
+    daten = [
         finding
         for finding in ergebnis.findings
         if finding.category in (Category.DATE, Category.BIRTHDATE)
-    ] == []
+    ]
+    # 1998 liegt zu nah fuer ein Geburtsdatum - das Datum bleibt trotzdem da.
+    assert [finding for finding in daten if finding.category is Category.BIRTHDATE] == []
+    assert [finding.text for finding in daten] == ["Geburtsdatum 05/02/1990"]
 
 
 def test_zahlenschreibweisen_mit_tag_und_monat():
@@ -337,6 +347,51 @@ def test_erkennung_findet_neue_schreibweisen(tmp_path):
         if finding.category is Category.BIRTHDATE
     ]
     assert texte == ["Geburtsdatum: 3. 12 1985"]
+
+
+def test_kurzes_datum_und_jahr_werden_erkannt(tmp_path):
+    """5.8.11 als Datum, 2025 als Jahr - beides erscheint in der Liste."""
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    quelle = _pdf(
+        tmp_path / "kurz.pdf",
+        ["Anmeldung 5.8.11", "Bericht 2025"],
+    )
+    ergebnis = run_detection(
+        str(quelle), DetectionOptions(use_ai=False, rule_groups=("date", "year"))
+    )
+
+    kategorien = {finding.text: finding.category for finding in ergebnis.findings}
+    assert kategorien["5.8.11"] is Category.DATE
+    assert kategorien["2025"] is Category.YEAR
+    assert Category.BIRTHDATE not in kategorien.values()
+
+
+def test_jahr_zerlegt_kein_datum(tmp_path):
+    """Das Jahr in einem vollstaendigen Datum wird nicht eigens markiert."""
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    quelle = _pdf(tmp_path / "datum.pdf", ["Zeugnis vom 20.10.2026"])
+    ergebnis = run_detection(
+        str(quelle), DetectionOptions(use_ai=False, rule_groups=("date", "year"))
+    )
+
+    assert [finding.text for finding in ergebnis.findings] == ["20.10.2026"]
+    assert ergebnis.findings[0].category is Category.DATE
+
+
+def test_jahr_steht_nicht_in_einer_nummer(tmp_path):
+    """1998 hinter "Personalnummer" bleibt eine Nummer, kein Jahr."""
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    quelle = _pdf(tmp_path / "nummer.pdf", ["Personalnummer: 1998"])
+    ergebnis = run_detection(
+        str(quelle), DetectionOptions(use_ai=False, rule_groups=("id", "year"))
+    )
+
+    assert [(finding.text, finding.category) for finding in ergebnis.findings] == [
+        ("1998", Category.ID)
+    ]
 
 
 if __name__ == "__main__":  # pragma: no cover

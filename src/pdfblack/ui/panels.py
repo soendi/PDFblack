@@ -44,6 +44,7 @@ CATEGORY_GROUPS: dict[Category, str] = {
     Category.BANK: "Bank / Karte",
     Category.DATE: "Datum",
     Category.BIRTHDATE: "Geburtsdatum",
+    Category.YEAR: "Jahr",
     Category.REGEX: "Eigene Regex",
     Category.MANUAL: "Manuelle Bereiche",
     Category.OTHER: "Sonstiges",
@@ -317,9 +318,11 @@ class ControlsPanel(QScrollArea):
         self.cb_contact.setChecked(True)
         self.cb_bank = QCheckBox("Bankdaten (IBAN)")
         self.cb_bank.setChecked(True)
-        self.cb_date = QCheckBox("Geburtsdatum (ältestes Datum)")
-        # Nur das Geburtsdatum wird geschwaerzt - deshalb standardmaessig an.
+        self.cb_date = QCheckBox("Datum (Geburtsdatum = ältestes Datum)")
+        # Alle Daten erscheinen; das Geburtsdatum wird zusaetzlich markiert.
         self.cb_date.setChecked(True)
+        self.cb_year = QCheckBox("Jahr (allein stehende Jahreszahl)")
+        self.cb_year.setChecked(True)
         for box in (
             self.cb_person,
             self.cb_location,
@@ -329,6 +332,7 @@ class ControlsPanel(QScrollArea):
             self.cb_contact,
             self.cb_bank,
             self.cb_date,
+            self.cb_year,
         ):
             card_layout.addWidget(box)
 
@@ -380,6 +384,7 @@ class ControlsPanel(QScrollArea):
             "kontakt": self.cb_contact,
             "bank": self.cb_bank,
             "datum": self.cb_date,
+            "jahr": self.cb_year,
         }
 
     def _restore_auto_settings(self) -> None:
@@ -532,6 +537,8 @@ class ControlsPanel(QScrollArea):
             groups.append("bank")
         if self.cb_date.isChecked():
             groups.append("date")
+        if self.cb_year.isChecked():
+            groups.append("year")
 
         return DetectionOptions(
             use_ai=use_ai and bool(ai_entities),

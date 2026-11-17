@@ -1,3 +1,13 @@
+## PDFblack 1.3.13
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.13
+
+- **Jedes Datum bleibt ein Treffer:** Bisher blieb von den Datumsangaben nur das Geburtsdatum übrig – ein Datum wie `5.8.11` verschwand, sobald es zu nah am nächsten Datum lag (2011 zu 2025 sind 14 Jahre). Jetzt stehen alle erkannten Daten in der Trefferliste und lassen sich einzeln abwählen; nichts verschwindet mehr still, nur weil es kein Geburtsdatum ist.
+- **Das Geburtsdatum wird zusätzlich markiert:** Liegt das älteste Datum mindestens 15 Jahre vor dem nächsten, trägt es weiterhin die Kategorie **„Geburtsdatum“** mit der Quelle „ältestes Datum“; die übrigen Daten stehen daneben als **„Datum“**. Gibt es kein Geburtsdatum, bleiben trotzdem alle Daten sichtbar. Das Häkchen heißt jetzt „Datum (Geburtsdatum = ältestes Datum)“.
+- **Neue Kategorie „Jahr“ mit eigenem Häkchen:** Allein stehende Jahreszahlen von 1900 bis 2099 – etwa „Bericht 2025“ – erscheinen als **„Jahr“** in eigener Farbe und lassen sich über „Jahr (allein stehende Jahreszahl)“ getrennt ein- und ausschalten. Steht die Jahreszahl in einem vollständigen Datum, bleibt sie Teil des Datums; eine Nummer wie „Personalnummer: 1998“ bleibt eine Nummer.
+
 ## PDFblack 1.3.12
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -229,13 +239,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.12-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.13-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 179 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate und die Geburtsdatums-Regel, die Lerndatei (Korrekturen, Fehlalarme, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 182 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Lerndatei (Korrekturen, Fehlalarme, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 
