@@ -160,5 +160,64 @@ def test_erkennung_schwaerzt_alle_schreibweisen_des_geburtsdatums(tmp_path):
     assert "20.10.2026" not in texte
 
 
+def test_datum_mit_schraegstrich_wird_gelesen():
+    assert geburtsdatum.als_datum("05/02/1990") == date(1990, 2, 5)
+    assert geburtsdatum.als_datum("5/2/90") == date(1990, 2, 5)
+    # Monat/Jahr allein ist kein vollstaendiges Datum.
+    assert geburtsdatum.als_datum("10/2025") is None
+
+
+def test_einziges_datum_mit_15_jahre_juengerer_jahreszahl():
+    """05/02/1990 und sonst nur 2020 genannt: das Datum ist das Geburtsdatum."""
+    assert geburtsdatum.geburtsdatum([date(1990, 2, 5)], [2020]) == date(1990, 2, 5)
+    assert geburtsdatum.geburtsdatum([date(1990, 2, 5)], [1990, 2020]) == date(
+        1990, 2, 5
+    )
+    # Nur 10 Jahre spaeter: kein Geburtsdatum.
+    assert geburtsdatum.geburtsdatum([date(1990, 2, 5)], [2000]) is None
+    # Ohne Vergleichswert ebenfalls keins.
+    assert geburtsdatum.geburtsdatum([date(1990, 2, 5)], []) is None
+    assert geburtsdatum.geburtsdatum([date(1990, 2, 5)]) is None
+
+
+def test_jahreszahlen_werden_gelesen():
+    assert geburtsdatum.jahreszahlen("Anmeldung 2020, geboren 1990") == [2020, 1990]
+    # Laengere Ziffernfolgen sind keine Jahreszahlen.
+    assert geburtsdatum.jahreszahlen("558416824044") == []
+
+
+def test_erkennung_schwaerzt_einziges_datum_mit_juengerer_jahreszahl(tmp_path):
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    quelle = _pdf(
+        tmp_path / "einzel.pdf",
+        ["Geburtsdatum 05/02/1990", "Anmeldung beim Amt 2020"],
+    )
+    ergebnis = run_detection(str(quelle), DetectionOptions(use_ai=False, rule_groups=("date",)))
+
+    treffer = [
+        finding.text
+        for finding in ergebnis.findings
+        if finding.category is Category.BIRTHDATE
+    ]
+    assert treffer == ["05/02/1990"]
+
+
+def test_erkennung_ohne_juengere_jahreszahl_schwaerzt_nichts(tmp_path):
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    quelle = _pdf(
+        tmp_path / "nah.pdf",
+        ["Geburtsdatum 05/02/1990", "Anmeldung beim Amt 1998"],
+    )
+    ergebnis = run_detection(str(quelle), DetectionOptions(use_ai=False, rule_groups=("date",)))
+
+    assert [
+        finding
+        for finding in ergebnis.findings
+        if finding.category in (Category.DATE, Category.BIRTHDATE)
+    ] == []
+
+
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__]))

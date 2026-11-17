@@ -1,3 +1,12 @@
+## PDFblack 1.3.11
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.11
+
+- **Einziges Datum im Dokument wird als Geburtsdatum erkannt:** Steht nur ein vollständiges Datum in der PDF – etwa `05/02/1990` –, vergleicht PDFblack es mit der nächsthöheren Jahreszahl im Text. Liegen dazwischen mindestens 15 Jahre (z. B. „Anmeldung 2020“), gilt das Datum als Geburtsdatum und wird geschwärzt. Liegt die nächste Jahreszahl näher („1998“), bleibt es unangetastet.
+- **Datumsangaben mit Schrägstrich:** `05/02/1990` und `5/2/90` (Tag/Monat/Jahr) werden gelesen und geschwärzt – bisher nur die Punktform. `10/2025` bleibt Monat/Jahr und zählt nicht als vollständiges Datum.
+
 ## PDFblack 1.3.10
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -204,13 +213,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.10-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.11-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 129 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 135 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern, Schweizer PLZ in getrennten Zeilen und Formularfeldern, Berufsbezeichnungen samt Zusammensetzungen, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

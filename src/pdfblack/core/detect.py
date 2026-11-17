@@ -358,7 +358,14 @@ def _nur_geburtsdatum(
         else:
             uebrige.append(candidate)
 
-    ziel = geburtsdatum_core.geburtsdatum([datum for _, datum in daten])
+    # Ist nur ein vollstaendiges Datum genannt, entscheidet die naechsthoehere
+    # Jahreszahl im Dokument ("05/02/1990" und sonst nur "2020").
+    jahre: list[int] = []
+    if textmap is not None and len({datum for _, datum in daten}) == 1:
+        for index in range(total):
+            jahre.extend(geburtsdatum_core.jahreszahlen(textmap.page(index).text))
+
+    ziel = geburtsdatum_core.geburtsdatum([datum for _, datum in daten], jahre)
     if ziel is None:
         return uebrige
     for candidate, datum in daten:

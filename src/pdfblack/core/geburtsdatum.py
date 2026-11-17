@@ -48,8 +48,13 @@ MONATE: dict[str, int] = {
 
 _MONATNAMEN = "|".join(sorted(MONATE, key=len, reverse=True))
 
-# 20.10.2026, 20.10.26, 20. 10. 2026
-_DOTTED = re.compile(r"(?<!\d)(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{2,4})(?!\d)")
+# 20.10.2026, 20.10.26, 20. 10. 2026 und 05/02/1990
+_DOTTED = re.compile(
+    r"(?<!\d)(\d{1,2})[./]\s*(\d{1,2})[./]\s*(\d{2,4})(?!\d)"
+)
+
+# Vierstellige Jahreszahlen im Text - sie entscheiden, wenn nur ein Datum da ist.
+_JAHRESZAHL = re.compile(r"(?<!\d)(1[6-9]\d{2}|20\d{2})(?!\d)")
 # 20. Oktober 2026, 20 Oktober 26
 _WORT = re.compile(
     rf"(?<!\d)(\d{{1,2}})\.?\s*({_MONATNAMEN})\.?\s*(\d{{2,4}})(?![\d\w])",
@@ -62,7 +67,7 @@ _ISO = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
 # Regel erfasst ("01. Maerz 1995", "1. 3. 1995", "1995-03-01").
 _SCHREIBWEISE = re.compile(
     r"(?<![\d\w.])("
-    r"\d{1,2}\s*\.\s*\d{1,2}\s*\.\s*\d{2,4}"
+    r"\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{2,4}"
     rf"|\d{{1,2}}\.?\s*(?:{_MONATNAMEN})\.?\s*\d{{2,4}}"
     r"|\d{4}-\d{2}-\d{2}"
     r")(?![\d\w])",
@@ -110,6 +115,11 @@ def als_datum(text: str) -> date | None:
         return None
 
 
+def jahreszahlen(text: str) -> list[int]:
+    """Alle vierstelligen Jahreszahlen im Text."""
+    return [int(treffer.group(1)) for treffer in _JAHRESZAHL.finditer(text)]
+
+
 def schreibweisen(text: str, ziel: date) -> list[tuple[int, int]]:
     """Alle Stellen im Text, die genau dieses Datum nennen - egal wie.
 
@@ -131,17 +141,29 @@ def jahre_zwischen(frueher: date, spaeter: date) -> int:
     return jahre
 
 
-def geburtsdatum(daten: list[date]) -> date | None:
-    """Aeltestes Datum, wenn es weit genug vor dem naechsten liegt.
+def geburtsdatum(
+    daten: list[date], weitere_jahre: list[int] | None = None
+) -> date | None:
+    """Aeltestes Datum, wenn es weit genug von juengeren Angaben entfernt ist.
 
-    Ohne zweites Datum laesst sich der Abstand nicht pruefen - dann gibt es
-    kein Geburtsdatum.
+    Gibt es mehrere Daten, entscheidet das naechstjuengere. Ist nur ein
+    vollstaendiges Datum genannt, entscheidet die naechsthoehere Jahreszahl im
+    Dokument ("05/02/1990" und sonst nur "2020" -> Geburtsdatum). Ohne
+    Vergleichswert gibt es kein Geburtsdatum.
     """
     eindeutig = sorted(set(daten))
-    if len(eindeutig) < 2:
+    if not eindeutig:
         return None
-    aeltestes, naechstes = eindeutig[0], eindeutig[1]
-    if jahre_zwischen(aeltestes, naechstes) < MINDESTABSTAND:
+    aeltestes = eindeutig[0]
+    if len(eindeutig) >= 2:
+        if jahre_zwischen(aeltestes, eindeutig[1]) < MINDESTABSTAND:
+            return None
+        return aeltestes
+
+    spaeter = [jahr for jahr in weitere_jahre or [] if jahr > aeltestes.year]
+    if not spaeter:
+        return None
+    if min(spaeter) - aeltestes.year < MINDESTABSTAND:
         return None
     return aeltestes
 
@@ -152,5 +174,6 @@ __all__ = [
     "als_datum",
     "geburtsdatum",
     "jahre_zwischen",
+    "jahreszahlen",
     "schreibweisen",
 ]
