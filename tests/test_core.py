@@ -631,3 +631,34 @@ def test_tldextract_weicht_auf_temporaeren_ordner_aus(tmp_path, monkeypatch):
         os.environ.pop("TLDEXTRACT_CACHE", None)
         if vorher is not None:
             os.environ["TLDEXTRACT_CACHE"] = vorher
+
+
+def test_regex_anker_gelten_pro_zeile(tmp_path):
+    """^ und $ passen auf Zeilenanfang und -ende, nicht auf die ganze Seite."""
+    import pymupdf
+
+    pdf = tmp_path / "lizenz.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), "Lizenznummer:", fontsize=12, fontname="helv")
+    page.insert_text((72, 120), "558416824044", fontsize=12, fontname="helv")
+    page.insert_text((72, 160), "Vertrag 558416824044", fontsize=12, fontname="helv")
+    doc.save(str(pdf))
+    doc.close()
+
+    def treffer(muster):
+        result = run_detection(
+            str(pdf),
+            DetectionOptions(
+                use_ai=False,
+                ai_entities=(),
+                rule_groups=(),
+                regexes=(RegexSpec("Lizenz", muster),),
+            ),
+        )
+        return texts(result.findings)
+
+    # Nummer steht allein in ihrer Zeile: der Anker greift.
+    assert treffer(r"^\d{12}$") == ["558416824044"]
+    # Mitten in der Zeile helfen Wortgrenzen.
+    assert treffer(r"\b\d{12}\b") == ["558416824044", "558416824044"]

@@ -388,3 +388,59 @@ def test_erkennung_startet_beim_oeffnen_von_selbst(
     assert not window._busy
     texte = [finding.text for finding in window._findings]
     assert any("4711-2233" in text for text in texte), texte
+
+
+def test_geschwaerzte_kopie_landet_im_benutzerordner(
+    window, qt_app, tmp_path, monkeypatch
+):
+    """Speichern fragt nicht mehr nach einem Ort, sondern nutzt die Ablage."""
+    import pymupdf
+
+    from pdfblack.core import ablage
+    from pdfblack.ui import main_window
+
+    monkeypatch.setattr(ablage, "ORDNER", tmp_path / "Ablage")
+    monkeypatch.setattr(
+        main_window.QMessageBox, "information", staticmethod(lambda *a, **k: None)
+    )
+
+    pdf = tmp_path / "Brief.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), "Personalnummer: 4711-2233", fontsize=12)
+    doc.save(str(pdf))
+    doc.close()
+
+    assert window.btn_save.text() == "Geschwärzte Kopie speichern"
+
+    window.controls.ai_check.setChecked(False)
+    window.load_pdf(str(pdf))
+    window._run_detection()
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if window._worker is None and not window._busy and window._findings:
+            break
+        QtTest.QTest.qWait(50)
+    assert window._findings, "ohne Treffer gibt es nichts zu speichern"
+
+    window._save_as()
+
+    kopien = ablage.dateien()
+    assert [datei.name for datei in kopien] == ["Brief_geschwaerzt.pdf"]
+    doc = pymupdf.open(str(kopien[0]))
+    try:
+        assert "4711-2233" not in doc[0].get_text()
+    finally:
+        doc.close()
+
+    # Das Original bleibt unveraendert.
+    doc = pymupdf.open(str(pdf))
+    try:
+        assert "4711-2233" in doc[0].get_text()
+    finally:
+        doc.close()
+
+    # Beim Beenden wird die Ablage geleert.
+    window.close()
+    qt_app.processEvents()
+    assert ablage.dateien() == []

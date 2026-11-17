@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, APP_TAGLINE, APP_VERSION
-from ..core import ocr as ocr_core
+from ..core import ablage, ocr as ocr_core
 from ..core.detect import DetectionOptions, run_detection
 from ..core.extract import open_document
 from ..core.models import Category, Finding, PdfPasswordError
@@ -59,7 +59,7 @@ from ..core.updater import (
     is_newer,
 )
 from .branding import compare_logo_pixmap, logo_pixmap, ocr_logo_pixmap
-from .compare import CompareView
+from .compare import CompareView, delete_redacted
 from .ocr_view import OcrView
 from .preferences import PreferencesDialog
 from .canvas import PdfCanvas
@@ -563,11 +563,14 @@ class MainWindow(QMainWindow):
         self.btn_open = QPushButton("PDF öffnen …")
         self.btn_preview = QPushButton("Vorschau erzeugen")
         self.btn_preview.setObjectName("Primary")
-        self.btn_save = QPushButton("Neu speichern unter …")
+        self.btn_save = QPushButton("Geschwärzte Kopie speichern")
         self.btn_preview.setToolTip(
             "Sucht alle Daten und markiert sie farbig – die Datei wird noch nicht verändert."
         )
-        self.btn_save.setToolTip("Schwärzt alle aktiven Treffer und speichert unter neuem Namen.")
+        self.btn_save.setToolTip(
+            "Schwärzt alle aktiven Treffer und legt die Kopie in deinem "
+            "Benutzerordner ab; sie wird beim Beenden entfernt."
+        )
         for button in (self.btn_open, self.btn_preview, self.btn_save):
             button.setCursor(Qt.PointingHandCursor)
 
@@ -776,7 +779,7 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self._choose_file)
         file_menu.addAction(open_action)
 
-        save_action = QAction("Neu speichern unter …", self)
+        save_action = QAction("Geschwärzte Kopie speichern", self)
         save_action.setShortcut(QKeySequence.Save)
         save_action.triggered.connect(self._save_as)
         file_menu.addAction(save_action)
@@ -1076,7 +1079,7 @@ class MainWindow(QMainWindow):
             active = sum(1 for f in self._findings if f.enabled)
             self.statusBar().showMessage(
                 f"{len(self._findings)} Treffer markiert ({active} aktiv). "
-                "Prüfen, dann „Neu speichern unter …“."
+                "Prüfen, dann „Geschwärzte Kopie speichern“."
             )
 
     def _on_detection_failed(self, message: str) -> None:
@@ -1256,7 +1259,8 @@ class MainWindow(QMainWindow):
         )
         self.btn_save.setEnabled(has_doc and not self._busy and active > 0)
         self.btn_save.setToolTip(
-            "Schwärzt alle aktiven Treffer und speichert unter neuem Namen."
+            "Schwärzt alle aktiven Treffer und legt die Kopie in deinem "
+            "Benutzerordner ab; sie wird beim Beenden entfernt."
             if active
             else "Noch keine aktiven Treffer."
         )
@@ -1284,28 +1288,16 @@ class MainWindow(QMainWindow):
             )
             return
 
-        base = os.path.splitext(os.path.basename(self._path))[0]
-        suggested = os.path.join(self._last_dir, f"{base}_geschwaerzt.pdf")
-        target, _ = QFileDialog.getSaveFileName(
-            self, "Neu speichern unter …", suggested, "PDF-Dateien (*.pdf)"
-        )
-        if not target:
-            return
-        if not target.lower().endswith(".pdf"):
-            target += ".pdf"
-
-        if os.path.abspath(target) == os.path.abspath(self._path):
-            answer = QMessageBox.question(
+        try:
+            target = str(ablage.ziel(self._path))
+        except OSError as exc:
+            QMessageBox.critical(
                 self,
-                "Originaldatei überschreiben?",
-                "Das Ziel ist die geöffnete Originaldatei.\n\n"
-                "Die Schwärzung kann nicht rückgängig gemacht werden. "
-                "Trotzdem überschreiben?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
+                "Speichern fehlgeschlagen",
+                f"Der Ordner für die geschwärzten Kopien ließ sich nicht "
+                f"anlegen:\n\n{exc}",
             )
-            if answer != QMessageBox.Yes:
-                return
+            return
 
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
@@ -1318,14 +1310,15 @@ class MainWindow(QMainWindow):
             return
         QApplication.restoreOverrideCursor()
 
-        self._last_dir = os.path.dirname(target) or self._last_dir
         self.compare_view.remember(target)
         self.statusBar().showMessage(f"{count} Stellen geschwärzt: {target}")
         QMessageBox.information(
             self,
-            "Gespeichert",
-            f"{count} Stellen wurden geschwärzt und in eine neue Datei geschrieben:\n\n"
-            f"{target}\n\nDie Originaldatei bleibt unverändert.",
+            "Geschwärzte Kopie gespeichert",
+            f"{count} Stellen wurden geschwärzt. Die Kopie liegt im "
+            f"Benutzerordner:\n\n{target}\n\nDas Original bleibt unverändert. "
+            "Die Kopie wird beim Beenden von PDFblack entfernt – vorher "
+            "weitergeben, wenn sie gebraucht wird.",
         )
 
     # ------------------------------------------------------------------
@@ -1354,7 +1347,8 @@ class MainWindow(QMainWindow):
             "4. Prüfen und überarbeiten: Klick auf eine Markierung schaltet sie "
             "aus oder wieder ein, Ziehen mit der Maus fügt einen eigenen Bereich "
             "hinzu, die Trefferliste rechts erlaubt Abwählen und Entfernen.\n\n"
-            "5. „Neu speichern unter …“ schreibt eine neue PDF-Datei, in der der "
+            "5. „Geschwärzte Kopie speichern“ legt eine neue PDF-Datei im "
+            "Benutzerordner an (Ordner „PDFblack/Geschwärzt“), in der der "
             "Text unter den Markierungen wirklich entfernt ist. Das Original "
             "bleibt unverändert.",
         )
@@ -1575,6 +1569,11 @@ class MainWindow(QMainWindow):
             self._worker.cancel()
             self._worker.wait(3000)
             self._worker = None
+        # Geschwaerzte Kopien liegen im Benutzerordner und verschwinden beim
+        # Beenden wieder - samt Kopien im Uebergabeordner an die Agenten.
+        kopien = [str(pfad) for pfad in ablage.dateien()]
+        if kopien:
+            delete_redacted(kopien)
         # PDFcompare: Listen leeren und nach den Dateien fragen.
         self.compare_view.cleanup_on_close(self)
         self.canvas.clear()

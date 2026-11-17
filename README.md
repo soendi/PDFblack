@@ -1,4 +1,4 @@
-# PDFblack 1.3.7
+# PDFblack 1.3.8
 
 Vertrauliche Daten in PDF-Dateien automatisch schwärzen – mit Vorschau, Prüfung
 und echter Entfernung des Textes.
@@ -14,10 +14,13 @@ und echter Entfernung des Textes.
    lässt sich die Prüfung jederzeit erneut anstoßen.
 3. Prüfen und überarbeiten: Markierungen per Klick abwählen, eigene Bereiche
    aufziehen, Werte in den Feldern ergänzen und erneut suchen.
-4. **Neu speichern unter …**: Alle aktiven Markierungen werden geschwärzt und
-   in eine neue Datei geschrieben. Der Text unter den Flächen wird dabei
+4. **Geschwärzte Kopie speichern**: Alle aktiven Markierungen werden geschwärzt
+   und in eine Kopie geschrieben, die im Benutzerordner landet
+   (`C:\Users\<Name>\PDFblack\Geschwärt`, unter Linux/macOS entsprechend
+   `~/PDFblack/Geschwärzt`). Der Text unter den Flächen wird dabei
    **physisch aus dem PDF entfernt** – es wird kein schwarzes Rechteck
-   darübergelegt.
+   darübergelegt. Beim Beenden von PDFblack wird der Ordner wieder geleert; die
+   Kopie vorher weitergeben, wenn sie bleiben soll.
 
 ## Erkennung
 
@@ -172,6 +175,11 @@ Ein Muster pro Zeile. Optional mit Namen, der in der Trefferliste erscheint:
 Aktenzeichen = [A-Z]{2}-\d{4,6}
 ```
 
+`^` und `$` passen auf **Zeilenanfang und Zeilenende** – `^\d{12}$` findet
+also eine zwölfstellige Nummer, die allein in ihrer Zeile steht. Steht die
+Nummer in einer Zeile mit anderem Text („Lizenznummer: 558416824044“), nimmt
+man Wortgrenzen: `\b\d{12}\b`.
+
 Ungültige Ausdrücke werden sofort rot gemeldet, bevor die Suche startet.
 
 ## Installation aus dem Quellcode
@@ -211,7 +219,7 @@ Muster, manuelle Werte und Regexe – die Oberfläche weist darauf hin.
   schaltet die ganze Gruppe ein oder aus, ein Häkchen vor einem Eintrag nur
   diesen.
 - **Zoom**: `+`/`−`, `Strg + Mausrad`, „Anpassen“ passt die Seitenbreite ein.
-- **Tastenkürzel**: `Strg+O` öffnen, `Strg+S` speichern unter, `F1` Anleitung.
+- **Tastenkürzel**: `Strg+O` öffnen, `Strg+S` geschwärzte Kopie speichern, `F1` Anleitung.
 - **Gemerkte Einstellungen**: Die Häkchen unter „Automatische Erkennung“ und die
   Empfindlichkeit gelten auch beim nächsten Start. Die Felder für eigene Werte
   bleiben bewusst leer – sie gehören zur jeweiligen Datei.
@@ -256,7 +264,7 @@ Alle Varianten setzen eine virtuelle Umgebung mit den Abhängigkeiten voraus.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-# Ergebnis: dist\PDFblack-1.3.7-Setup.exe  (benötigt Inno Setup 6)
+# Ergebnis: dist\PDFblack-1.3.8-Setup.exe  (benötigt Inno Setup 6)
 ```
 
 **macOS (.app + ZIP)**

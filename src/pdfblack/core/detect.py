@@ -315,8 +315,14 @@ def term_pattern(value: str) -> str:
 def compile_regexes(
     specs: tuple[RegexSpec, ...], ignore_case: bool
 ) -> list[tuple[RegexSpec, re.Pattern[str]]]:
-    """Benutzer-Regexe uebersetzen. Wirft ValueError bei ungueltigem Muster."""
-    flags = re.UNICODE
+    """Benutzer-Regexe uebersetzen. Wirft ValueError bei ungueltigem Muster.
+
+    ``MULTILINE``, damit ``^`` und ``$`` auf Zeilenanfang und -ende passen:
+    der Seitentext besteht aus mehreren Zeilen, und ein Muster wie
+    ``^\\d{12}$`` soll eine Nummer finden, die allein in ihrer Zeile steht -
+    nicht nur dann, wenn die ganze Seite aus dieser Nummer besteht.
+    """
+    flags = re.UNICODE | re.MULTILINE
     if ignore_case:
         flags |= re.IGNORECASE
     result: list[tuple[RegexSpec, re.Pattern[str]]] = []

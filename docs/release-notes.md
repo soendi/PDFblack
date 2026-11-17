@@ -1,3 +1,13 @@
+## PDFblack 1.3.8
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.8
+
+- **Geschwärzte Kopie im Benutzerordner:** Der Knopf „Neu speichern unter …“ heißt jetzt **„Geschwärzte Kopie speichern“** und fragt nicht mehr nach einem Speicherort. Die geschwärzte Fassung landet automatisch in `%USERPROFILE%\PDFblack\Geschwärt` (unter Linux/macOS `~/PDFblack/Geschwärt`); heißt die Quelle `Brief.pdf`, entsteht `Brief_geschwaerzt.pdf`, bei Bedarf durchnummeriert. Die Meldung nennt den vollständigen Pfad, die Kopie steht weiterhin unter „Zuletzt geschwärzt“.
+- **Die Ablage räumt sich beim Beenden selbst auf:** Beim Schließen von PDFblack werden die Kopien in diesem Ordner samt eventueller Kopien im Copilot-Übergabeordner gelöscht – die alte Rückfrage nach den geschwärzten Dateien entfällt damit. Das Original bleibt unverändert; wer die Kopie behalten will, gibt sie vor dem Beenden weiter.
+- **Regex-Anker gelten pro Zeile:** `^` und `$` in eigenen Ausdrücken wurden bisher gegen den gesamten Seitentext geprüft, ein Muster wie `^\d{12}$` fand deshalb nur Seiten, die ausschließlich aus der Nummer bestehen. Jetzt passen die Anker auf Zeilenanfang und Zeilenende, die Lizenznummer `558416824044` wird also auch dann gefunden, wenn sie allein in ihrer Zeile steht. Steht sie mitten in einer Zeile („Lizenznummer: 558416824044“), nimmt man Wortgrenzen: `\b\d{12}\b`.
+
 ## PDFblack 1.3.7
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.

@@ -160,7 +160,10 @@ class DropZone(QWidget):
         layout.addWidget(button, alignment=Qt.AlignCenter)
         layout.addStretch(1)
 
-        note = QLabel("Die Datei bleibt unverändert – geschwärzt wird erst beim Speichern unter einem neuen Namen.")
+        note = QLabel(
+            "Die Datei bleibt unverändert – geschwärzt wird erst in der "
+            "geschwärzten Kopie."
+        )
         note.setObjectName("Hint")
         note.setAlignment(Qt.AlignCenter)
         note.setWordWrap(True)
@@ -259,7 +262,8 @@ class ControlsPanel(QScrollArea):
         # --- Regex ----------------------------------------------------
         card, card_layout = _card(
             "Eigene Regex-Ausdrücke",
-            "Ein Ausdruck pro Zeile. Optional mit Namen: Aktenzeichen = \\d{2}-\\d{4}",
+            "Ein Ausdruck pro Zeile. Optional mit Namen: Aktenzeichen = "
+            "\\d{2}-\\d{4}. ^ und $ gelten pro Zeile, \\b für Wortgrenzen."
         )
         self.regex_edit = QPlainTextEdit()
         self.regex_edit.setPlaceholderText("z. B. \\b[A-Z]{2}-\\d{4}/\\d{4}\\b")
