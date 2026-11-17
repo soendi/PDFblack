@@ -1,3 +1,13 @@
+## PDFblack 1.3.17
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.3.17
+
+- **Zeilen aus getrennten Textfeldern:** In vielen PDFs stehen die Teile einer Zeile in eigenen Textobjekten – Formularfelder, Tabellenzellen, rechtsbündige Hausnummern. Zwischen „Wolfsbachstrasse“ und „6“ oder zwischen „9436“ und „Balgach“ setzte die Textaufbereitung einen Zeilenumbruch, und der Treffer endete beim halben Wert: „Wolfsbachstrasse“ wurde gefunden, „Wolfsbachstrasse 6“ nicht, und „9436 Balgach“ verschwand. Jetzt entscheidet allein die Lage auf der Seite: Was auf derselben sichtbaren Zeile steht, wird als eine Zeile gelesen – auch über eine grosse Lücke zwischen zwei Feldern hinweg. Was PyMuPDF ohnehin als eine Zeile führt, bleibt immer zusammen. Geschützte, schmale und unsichtbare Leerzeichen, die beim Einlesen mitten im Wort stehen bleiben, zählen dabei als Trennzeichen.
+- **Ausgeschriebene Geburtsdaten:** „5. Februar 1990“ wird jetzt auch dann als Datum gelesen und mit den übrigen Daten verglichen, wenn Tag, Monatsname und Jahr in getrennten Feldern stehen. Alle zwölf Monatsnamen sind abgedeckt, mit Tag ein- oder zweistellig (mit oder ohne Punkt) und Jahr zwei- oder vierstellig. Steht dasselbe Datum zusätzlich in Zahlenform (`05.02.1990`) im Dokument, tragen beide Stellen die Kategorie „Geburtsdatum“.
+- **Datumsbeginn ist keine Hausnummer:** In einer Zeile wie „Eintritt 01.09.2020“ machte die Hausnummern-Regel bisher die Adresse „Eintritt 01“ daraus und verdrängte das Datum – ein Geburtsdatum konnte dadurch als Vergleichswert fehlen. Eine Zahl, die ein Datum beginnt (`01.09.2020`, `1. 9. 2020`, `01-09-2020`, `5.2.90`), gilt jetzt nicht mehr als Hausnummer. Hausnummernbereiche wie „Hauptstrasse 12-14“ bleiben Adressen.
+
 ## PDFblack 1.3.16
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -276,13 +286,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.16-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.17-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 267 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern (auch mit Ort dahinter und in getrennten Textblöcken), fünfstellige PLZ mit Ortschaft, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate samt ausgeschriebenen und abgekürzten Monaten („Febr.“), umbrochene IBANs, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 283 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern (auch mit Ort dahinter, in getrennten Textblöcken und mit einem Datum davor), fünfstellige PLZ mit Ortschaft, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate samt ausgeschriebenen und abgekürzten Monaten („Febr.“, alle zwölf Monatsnamen, auch in getrennten Textfeldern), umbrochene IBANs, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

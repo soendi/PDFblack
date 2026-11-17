@@ -287,6 +287,67 @@ def test_februar_in_allen_schreibweisen():
         assert geburtsdatum.als_datum(text) == erwartet, text
 
 
+@pytest.mark.parametrize(
+    ("monat", "nummer"),
+    [
+        ("Januar", 1),
+        ("Februar", 2),
+        ("März", 3),
+        ("April", 4),
+        ("Mai", 5),
+        ("Juni", 6),
+        ("Juli", 7),
+        ("August", 8),
+        ("September", 9),
+        ("Oktober", 10),
+        ("November", 11),
+        ("Dezember", 12),
+    ],
+)
+def test_alle_zwoelf_monatsnamen(monat, nummer):
+    """Jeder Monatsname ergibt mit Tag und Jahr ein vollstaendiges Datum."""
+    assert geburtsdatum.als_datum(f"5. {monat} 1990") == date(1990, nummer, 5)
+    assert geburtsdatum.als_datum(f"5 {monat} 90") == date(1990, nummer, 5)
+
+
+def test_ausgeschriebenes_datum_in_getrennten_feldern(tmp_path):
+    """Tag, Monatsname und Jahr stehen in eigenen Textfeldern derselben Zeile.
+
+    So sehen Formulare aus: die Felder sind eigene Textobjekte mit grossem
+    Abstand. Der Text muss trotzdem als "5. Februar 1990" gelesen und mit den
+    uebrigen Daten verglichen werden.
+    """
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    doc = pymupdf.open()
+    seite = doc.new_page(width=595, height=842)
+    felder = [
+        (50, 100, "Geburtsdatum:"),
+        (230, 100, "5."),
+        (260, 100, "Februar"),
+        (370, 100, "1990"),
+        (50, 140, "Eintritt:"),
+        (230, 140, "01.09.2020"),
+        (50, 180, "Zeugnis:"),
+        (230, 180, "12.03.2026"),
+    ]
+    for x, y, text in felder:
+        seite.insert_text((x, y), text, fontsize=11, fontname="helv")
+    quelle = tmp_path / "geb_felder.pdf"
+    doc.save(str(quelle))
+    doc.close()
+
+    ergebnis = run_detection(
+        str(quelle), DetectionOptions(use_ai=False, rule_groups=("date",))
+    )
+    texte = [
+        finding.text
+        for finding in ergebnis.findings
+        if finding.category is Category.BIRTHDATE
+    ]
+    assert texte == ["Geburtsdatum: 5. Februar 1990"]
+
+
 def test_ausgeschriebenes_geburtsdatum_wird_erkannt(tmp_path):
     """Der Monatsname zaehlt wie die Zahlenform als Geburtsdatum."""
     from pdfblack.core.detect import DetectionOptions, run_detection
@@ -327,6 +388,29 @@ def test_kurzform_des_monats_wird_erkannt(tmp_path):
         if finding.category is Category.BIRTHDATE
     ]
     assert texte == ["Geburtstag: 5. Febr. 90"]
+
+
+def test_datum_hinter_beschriftung_geht_nicht_verloren(tmp_path):
+    """"Eintritt 01.09.2020": die Zahl beginnt ein Datum und ist keine Hausnummer.
+
+    Ohne diese Sperre las die Hausnummern-Regel "Eintritt 01" und verdraengte
+    das Datum - damit fehlte auch ein Vergleichswert fuer das Geburtsdatum.
+    """
+    from pdfblack.core.detect import DetectionOptions, run_detection
+
+    quelle = _pdf(
+        tmp_path / "beschriftung.pdf",
+        ["Eintritt 01.09.2020", "Geburtsdatum: 05.02.1990"],
+    )
+    ergebnis = run_detection(
+        str(quelle), DetectionOptions(use_ai=False, rule_groups=("address", "date"))
+    )
+    texte = {finding.category: [] for finding in ergebnis.findings}
+    for finding in ergebnis.findings:
+        texte.setdefault(finding.category, []).append(finding.text)
+    assert "01.09.2020" in texte.get(Category.DATE, [])
+    assert "Geburtsdatum: 05.02.1990" in texte.get(Category.BIRTHDATE, [])
+    assert not any("Eintritt" in text for text in texte.get(Category.ADDRESS, []))
 
 
 def test_monat_jahr_ohne_tag():

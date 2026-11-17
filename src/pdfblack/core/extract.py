@@ -15,9 +15,21 @@ from .models import PdfPasswordError, Rect
 
 # Ab dieser Luecke (in PDF-Punkten) gelten zwei Woerter als getrennt.
 _MERGE_GAP = 2.5
-# Ab diesem waagerechten Abstand gelten zwei Woerter derselben Zeile als
-# getrennte Spalten und bleiben durch einen Zeilenumbruch getrennt.
-_SPALTEN_ABSTAND = 48.0
+# Geschuetzte, schmale und unsichtbare Leerzeichen bleiben beim Einlesen
+# manchmal mitten im Wort (OCR, gesetzte Formulare). Fuer die Muster zaehlen
+# sie als Trennzeichen; die Laenge bleibt gleich, die Zeichenpositionen also
+# gueltig.
+_TRENNZEICHEN = str.maketrans(
+    {
+        "\u00a0": " ",
+        "\u2007": " ",
+        "\u2009": " ",
+        "\u202f": " ",
+        "\u200b": " ",
+    }
+)
+# Ab dieser Hoehendifferenz stehen zwei Woerter nicht mehr auf einer Zeile.
+_ZEILEN_TOLERANZ = 0.5
 
 
 def _gleiche_zeile(
@@ -29,16 +41,17 @@ def _gleiche_zeile(
     eigener Block neben dem Strassennamen steht (Tabelle, rechtsbuendige
     Nummer, PLZ und Ort in zwei Feldern), bekommt eine andere Zeilennummer.
     Im zusammengesetzten Text stand dann ein Zeilenumbruch mitten in der
-    Adresse, und die Regel fand nur den halben Treffer. Entscheidend ist die
-    Lage auf der Seite: gleiche Hoehe und kein Spaltensprung dazwischen.
+    Adresse, und die Regel fand nur den halben Treffer ("Wolfsbachstrasse"
+    statt "Wolfsbachstrasse 6", "9436" ohne "Balgach", "5. Februar" ohne
+    "1990"). Entscheidend ist die Lage auf der Seite, nicht die Herkunft aus
+    einem Block: gleiche Hoehe heisst gleiche Zeile - auch bei grossem Abstand
+    zwischen zwei Formularfeldern.
     """
     hoehe = min(vorher[3] - vorher[1], jetzt[3] - jetzt[1])
     if hoehe <= 0:
         return False
     ueberlappung = min(vorher[3], jetzt[3]) - max(vorher[1], jetzt[1])
-    if ueberlappung < 0.5 * hoehe:
-        return False
-    return jetzt[0] - vorher[2] <= _SPALTEN_ABSTAND
+    return ueberlappung >= _ZEILEN_TOLERANZ * hoehe
 
 
 @dataclass(slots=True)
@@ -116,26 +129,33 @@ class TextMap:
         parts: list[str] = []
         cursor = 0
         vorher: tuple[float, float, float, float] | None = None
+        vorher_zeile: tuple[int, int] | None = None
         # Hinweis: Werte von Formularfeldern erscheinen in dieser PyMuPDF-
         # Fassung als normaler Seitentext - aber oft in eigenen Bloecken, also
         # in getrennten Zeilen.
         for entry in page.get_text("words"):
             x0, y0, x1, y1, word = entry[0], entry[1], entry[2], entry[3], entry[4]
-            word = word.strip()
-            if not word:
+            block_no = int(entry[5]) if len(entry) > 5 else 0
+            line_no = int(entry[6]) if len(entry) > 6 else 0
+            word = word.strip().translate(_TRENNZEICHEN)
+            if not word.strip():
                 continue
             box = (float(x0), float(y0), float(x1), float(y1))
+            zeile = (block_no, line_no)
             if parts:
                 # Zeilenumbrueche bleiben erhalten: das NER-Modell und die
                 # Muster erkennen Zusammenhaenge je Zeile deutlich besser.
                 # Woerter derselben sichtbaren Zeile bleiben aber zusammen,
-                # auch wenn sie aus verschiedenen Textbloecken stammen.
-                separator = (
-                    " " if vorher is not None and _gleiche_zeile(vorher, box) else "\n"
+                # auch wenn sie aus verschiedenen Textbloecken stammen; was
+                # PyMuPDF schon als eine Zeile fuehrt, bleibt es immer.
+                gleich = zeile == vorher_zeile or (
+                    vorher is not None and _gleiche_zeile(vorher, box)
                 )
+                separator = " " if gleich else "\n"
                 parts.append(separator)
                 cursor += len(separator)
             vorher = box
+            vorher_zeile = zeile
             start = cursor
             parts.append(word)
             cursor += len(word)

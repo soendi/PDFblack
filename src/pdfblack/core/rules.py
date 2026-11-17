@@ -44,6 +44,13 @@ class Rule:
     validate: Callable[[str], bool] | None = None
 
 
+# Eine Zahl, die ein Datum beginnt ("01.09.2020", "1. 9. 2020", "01-09-2020",
+# "5.2.90"), ist keine Hausnummer: ohne diese Sperre machte "Eintritt
+# 01.09.2020" die Adresse "Eintritt 01" das Datum unauffindbar. Ein
+# Hausnummernbereich wie "12-14" hat nur zwei Teile und bleibt erlaubt.
+_DATE_ANFANG = r"\d{1,2}[ \t]?[./\-][ \t]?\d{1,2}[ \t]?[./\-][ \t]?\d{2,4}(?!\d)"
+_HOUSE_NO_LEAD = rf"(?!(?:{_DATE_ANFANG}))"
+
 # Eine Liste fuer alle Strassenmuster. Ausgeschriebene und abgekuerzte Form
 # duerfen nicht getrennt gepflegt werden, sonst laufen sie auseinander.
 _STREET_SUFFIXE = (
@@ -519,7 +526,10 @@ RULES: tuple[Rule, ...] = (
         label="Stra\u00dfe + Hausnummer",
         group="address",
         category=Category.ADDRESS,
-        pattern=rf"(?<!\w){_STREET_WORD}\.?[ \t]*{_HOUSE_NO}(?!\w){_HOUSE_END}",
+        pattern=(
+            rf"(?<!\w){_STREET_WORD}\.?[ \t]*{_HOUSE_NO_LEAD}{_HOUSE_NO}"
+            rf"(?!\w){_HOUSE_END}"
+        ),
     ),
     Rule(
         key="street_prep",
@@ -528,7 +538,8 @@ RULES: tuple[Rule, ...] = (
         category=Category.ADDRESS,
         pattern=(
             rf"(?<!\w)(?:Am|An|Auf|Beim|Hinter|Im|In|Unter|Vor|Zum|Zur)[ \t]+"
-            rf"(?:dem|der|den)?[ \t]*[A-Z\u00c4\u00d6\u00dc]{_CITY_PART}[ \t]+{_HOUSE_NO}(?!\w){_HOUSE_END}"
+            rf"(?:dem|der|den)?[ \t]*[A-Z\u00c4\u00d6\u00dc]{_CITY_PART}[ \t]+"
+            rf"{_HOUSE_NO_LEAD}{_HOUSE_NO}(?!\w){_HOUSE_END}"
         ),
     ),
     Rule(
@@ -552,7 +563,7 @@ RULES: tuple[Rule, ...] = (
         # geprueft.
         pattern=(
             rf"(?<!\w){_STREET_STEM}[ \t]+{_STREET_SUFFIX_WORT}"
-            rf"(?![A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df])[ \t]*{_HOUSE_NO}"
+            rf"(?![A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df])[ \t]*{_HOUSE_NO_LEAD}{_HOUSE_NO}"
             rf"(?!\w){_HOUSE_END}"
         ),
         validate=_strasse_getrennt_bekannt,
@@ -577,7 +588,7 @@ RULES: tuple[Rule, ...] = (
         case_sensitive=True,
         pattern=(
             rf"(?<![\w])(?!(?i:{_HOUSE_NO_STOP})\b){_HOUSE_STREET}[ \t]+"
-            rf"{_HOUSE_NO_SHORT}(?![\w\u20ac%'\u2019])"
+            rf"{_HOUSE_NO_LEAD}{_HOUSE_NO_SHORT}(?![\w\u20ac%'\u2019])"
             # "Police 44-778" ist keine Hausnummer, "12-14" schon.
             rf"(?![ \t]?[-/][ \t]?\d{{3,}})"
             rf"{_HOUSE_END}"

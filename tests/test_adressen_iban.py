@@ -34,6 +34,17 @@ def _pdf(pfad, zeilen):
     return str(pfad)
 
 
+def _formular(pfad, felder):
+    """Felder wie in einem Formular: jedes Feld ein eigener Textblock."""
+    doc = pymupdf.open()
+    seite = doc.new_page(width=595, height=842)
+    for x, y, text in felder:
+        seite.insert_text((x, y), text, fontsize=11, fontname="helv")
+    doc.save(str(pfad))
+    doc.close()
+    return str(pfad)
+
+
 def _findings(pfad, zeilen):
     quelle = _pdf(pfad, zeilen)
     return run_detection(
@@ -83,6 +94,52 @@ def test_hausnummer_und_ort_in_eigenen_spalten(tmp_path):
     )
     assert "Seestrasse 7" in _texte(findings, Category.ADDRESS)
     assert "CH-8000 Zürich" in _texte(findings, Category.POSTAL)
+
+
+def test_hausnummer_und_ort_in_weit_getrennten_feldern(tmp_path):
+    """Strasse, Hausnummer, PLZ und Ort stehen in eigenen, weit entfernten Feldern.
+
+    "Wolfsbachstrasse" allein wurde gefunden, "Wolfsbachstrasse 6" nicht, weil
+    zwischen Name und Nummer ein Zeilenumbruch lag. Ebenso verschwand
+    "9436 Balgach", wenn PLZ und Ort in zwei Feldern standen.
+    """
+    quelle = _formular(
+        tmp_path / "formular.pdf",
+        [
+            (50, 100, "Wolfsbachstrasse"),
+            (330, 100, "6"),
+            (50, 140, "9436"),
+            (330, 140, "Balgach"),
+        ],
+    )
+    findings = run_detection(
+        quelle, DetectionOptions(use_ai=False, rule_groups=ALL_GROUPS)
+    ).findings
+    assert "Wolfsbachstrasse 6" in _texte(findings, Category.ADDRESS)
+    assert "9436 Balgach" in _texte(findings, Category.POSTAL)
+
+
+def test_zahl_am_datumsanfang_ist_keine_hausnummer(tmp_path):
+    """"Eintritt 01.09.2020" ist ein Datum, keine Adresse "Eintritt 01"."""
+    findings = _findings(
+        tmp_path / "datum_keine_nr.pdf",
+        [
+            "Eintritt 01.09.2020",
+            "Zeugnis 12.03.2026",
+            "Geburt 5.2.90",
+            # Ein Hausnummernbereich bleibt eine Hausnummer.
+            "Hauptstrasse 12-14",
+        ],
+    )
+    adressen = _texte(findings, Category.ADDRESS)
+    assert not any(
+        "Eintritt" in text or "Zeugnis" in text or "Geburt" in text
+        for text in adressen
+    ), adressen
+    assert "Hauptstrasse 12-14" in adressen
+    daten = _texte(findings, Category.DATE) + _texte(findings, Category.BIRTHDATE)
+    assert "01.09.2020" in daten
+    assert "12.03.2026" in daten
 
 
 def test_fuenfstellige_plz_mit_ort(tmp_path):
