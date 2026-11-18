@@ -44,6 +44,10 @@ def window(qt_app, tmp_path):
     win.show()
     qt_app.processEvents()
     yield win
+    # Kein Abfraagedialog in der Teardown-Phase: unter Windows bleiben von
+    # PyMuPDF gesperrte Dateien liegen, und die Rueckfrage wuerde den Test
+    # haengen lassen, statt den Fehler zu melden.
+    win.compare_view.clear_all()
     win.close()
 
 
@@ -968,7 +972,7 @@ def test_zweite_ablageflaeche_nimmt_mehrere_dateien(window, qt_app, tmp_path):
     _drop(window.queue_zone, dateien)
     qt_app.processEvents()
 
-    assert window._path == dateien[0]
+    assert Path(window._path) == Path(dateien[0])
     assert window._queue == dateien[1:]
     assert window._queue_total == 3
     assert window.queue_label.text() == "Stapel 1 von 3"
@@ -985,7 +989,7 @@ def test_erste_ablageflaeche_bleibt_bei_einer_datei(window, qt_app, tmp_path):
     _drop(window.dropzone, dateien)
     qt_app.processEvents()
 
-    assert window._path == dateien[0]
+    assert Path(window._path) == Path(dateien[0])
     assert window._queue == []
     assert window._queue_total == 0
     assert window.queue_label.isHidden()
@@ -1011,7 +1015,7 @@ def test_speichern_oeffnet_die_naechste_datei(window, qt_app, tmp_path, monkeypa
         "stapel-0_geschwaerzt.pdf"
     ]
     # ... und die zweite Datei steht schon bereit.
-    assert window._path == dateien[1]
+    assert Path(window._path) == Path(dateien[1])
     assert window._queue == []
     assert window._queue_done == 1
     assert window.queue_label.text() == "Stapel 2 von 2"
@@ -1033,7 +1037,7 @@ def test_naechste_datei_rueckt_ohne_speichern_weiter(window, qt_app, tmp_path):
     window._open_next_in_queue()
     qt_app.processEvents()
 
-    assert window._path == dateien[1]
+    assert Path(window._path) == Path(dateien[1])
     assert window._queue == []
     assert window._queue_total == 2
     assert window._queue_done == 0, "uebersprungen heisst nicht geschwaerzt"
@@ -1056,8 +1060,8 @@ def test_weitere_dateien_haengen_sich_an_den_laufenden_stapel(
     assert window._queue_total == 3
     # Die wartende Datei bleibt, die neue kommt hinten dazu; die bereits
     # geoeffnete Datei wird nicht ein zweites Mal vorgemerkt.
-    assert window._queue == [dateien[1], dateien[2]]
-    assert window._path == dateien[0]
+    assert [Path(p) for p in window._queue] == [Path(dateien[1]), Path(dateien[2])]
+    assert Path(window._path) == Path(dateien[0])
     assert window.queue_label.text() == "Stapel 1 von 3"
 
 
@@ -1077,8 +1081,8 @@ def test_stapel_erkennt_scan_und_kehrt_nach_pdfblack_zurueck(
 
     window.start_queue([str(text_pdf), str(scan)])
     qt_app.processEvents()
-    assert window._path == str(text_pdf)
-    assert window._queue == [str(scan)]
+    assert Path(window._path) == text_pdf
+    assert [Path(p) for p in window._queue] == [scan]
 
     # Erste Datei speichern -> der Scan wird geoeffnet und ausgelesen.
     window._findings = [_stapel_treffer()]
@@ -1086,7 +1090,7 @@ def test_stapel_erkennt_scan_und_kehrt_nach_pdfblack_zurueck(
     window._save_as()
     qt_app.processEvents()
 
-    assert _wait_until(lambda: window.ocr_view._path == str(scan)), (
+    assert _wait_until(lambda: Path(window.ocr_view._path or "") == scan), (
         "Scan wurde nicht an PDFocr uebergeben"
     )
     assert _wait_until(lambda: window.ocr_view._result_path is not None), (
@@ -1129,7 +1133,7 @@ def test_stapel_endet_nach_der_letzten_datei(window, qt_app, tmp_path, monkeypat
     qt_app.processEvents()
 
     for nummer in range(2):
-        assert window._path == dateien[nummer]
+        assert Path(window._path) == Path(dateien[nummer])
         window._findings = [_stapel_treffer()]
         window._sync_findings()
         window._save_as()
