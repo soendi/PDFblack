@@ -40,14 +40,30 @@ jobs:
       - name: Tests
         shell: pwsh
         run: |
-          python -m pytest tests -q --tb=short 2>&1 | Tee-Object -FilePath tests.log
-          if ($LASTEXITCODE -eq 0) { exit 0 }
+          # Ungepuffert und mit Zeitlimit: haengt ein Test, bricht der Lauf ab
+          # und nennt den Test, statt still stehen zu bleiben.
+          $grenze = 900000
+          $prozess = Start-Process -FilePath python `
+            -ArgumentList '-u','-m','pytest','tests','-v','--tb=short' `
+            -RedirectStandardOutput tests.log -RedirectStandardError tests.err `
+            -NoNewWindow -PassThru
+          if ($prozess.WaitForExit($grenze)) {
+            $code = $prozess.ExitCode
+          } else {
+            $prozess.Kill()
+            $code = 124
+          }
+          if ($code -eq 0) { exit 0 }
           Write-Host "--- Testfehler ---"
           Get-Content tests.log -Tail 60
           # Fehlerzeilen als Annotation, damit sie ohne Log-Download sichtbar sind.
           Select-String -Path tests.log -Pattern '^(FAILED|ERROR)\s' |
             Select-Object -First 10 |
             ForEach-Object { Write-Host "::error::$($_.Line)" }
+          if ($code -eq 124) {
+            $letzte = (Get-Content tests.log -Tail 1) -join ''
+            Write-Host "::error::Tests haengen - zuletzt gestartet: $letzte"
+          }
           exit 1
 
       - name: Installer bauen und selbst testen
