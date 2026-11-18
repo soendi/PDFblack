@@ -1,3 +1,15 @@
+## PDFblack 1.4.0
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.4.0
+
+- **Zweite Ablagefläche für ganze Stapel:** Zieht man mehrere PDFs auf die rechte Fläche, öffnet PDFblack die erste und arbeitet danach eine Datei nach der anderen ab. Nach „Geschwärzte Kopie speichern“ kommt die nächste Datei von selbst; die Werkzeugleiste zeigt „Stapel 2 von 5“ mit dem Fortschritt, und im Stapelbetrieb entfällt die Rückfrage nach dem Speichern, damit der Ablauf nicht stockt.
+- **Nächste Datei und Nachschub:** „Nächste Datei“ überspringt eine Datei ohne zu speichern. Werden während des Laufs weitere PDFs auf die rechte Fläche gezogen, hängen sie sich an den Stapel an, statt ihn zu ersetzen – die bereits abgearbeiteten Dateien bleiben abgehakt.
+- **Scans im Stapel gehen denselben Weg wie einzeln abgelegte Dateien:** Hat die nächste Datei keinen Textlayer, öffnet sich PDFocr, liest den Scan aus und lädt das Ergebnis zurück nach PDFblack. Eine noch laufende Erkennung wird beim Wechsel abgebrochen, damit nicht das Ergebnis der vorherigen Datei in der neuen landet.
+- **Kopfzeile zeigt nur noch einen Text:** Schnelles Hin- und Herschieben zwischen PDFblack, PDFcompare und PDFocr konnte den Text eines inaktiven Fensters eingeblendet lassen. Jede Blende landet jetzt zuverlässig im Zielzustand – es bleibt genau ein Text stehen.
+- **Beim Beenden wird die Datei zuerst entladen:** Bisher war die geladene PDF beim Schließen noch offen, während PDFblack die geschwärzten Kopien löschte. Unter Windows scheiterte das an der Dateisperre und meldete „Diese Dateien konnten nicht gelöscht werden“ für genau die geladene Datei. Jetzt schließt PDFblack das Dokument vor dem Aufräumen; die Meldung erscheint nicht mehr, und auch die Arbeitsdatei der Texterkennung wird entfernt.
+
 ## PDFblack 1.3.18
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -294,13 +306,15 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.4.0-Setup.exe`
+
 PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.18-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 284 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern (auch mit Ort dahinter, in getrennten Textblöcken und mit einem Datum davor), fünfstellige PLZ mit Ortschaft, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate samt ausgeschriebenen und abgekürzten Monaten („Febr.“, alle zwölf Monatsnamen, auch in getrennten Textfeldern), umbrochene IBANs, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, die Leserichtung der aus Scans erzeugten Textebene, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen, Update-Abfrage und gemerkte Einstellungen
+- 295 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern (auch mit Ort dahinter, in getrennten Textblöcken und mit einem Datum davor), fünfstellige PLZ mit Ortschaft, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate samt ausgeschriebenen und abgekürzten Monaten („Febr.“, alle zwölf Monatsnamen, auch in getrennten Textfeldern), umbrochene IBANs, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, die Leserichtung der aus Scans erzeugten Textebene, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen samt Blendenaustausch bei schnellem Wechsel, den Stapel (zweite Ablagefläche, Nächste Datei, Nachschub, Scan im Stapel), das Entladen des Dokuments vor dem Aufräumen beim Beenden, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

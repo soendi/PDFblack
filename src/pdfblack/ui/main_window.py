@@ -292,8 +292,10 @@ class _BrandBlock(QWidget):
         return self._text_alpha
 
     def set_text_opacity(self, value: float) -> None:
+        # Jede Aenderung uebernehmen: mit einer Toleranz bliebe der Text nach
+        # einer unterbrochenen Blende auf einem Restwert stehen.
         value = max(0.0, min(1.0, value))
-        if abs(value - self._text_alpha) < 0.004:
+        if value == self._text_alpha:
             return
         self._text_alpha = value
         self._apply_text_alpha(value)
@@ -319,6 +321,8 @@ class AppHeader(QWidget):
     GAP = 11
     SLIDE_MS = 320
     TEXT_MS = 220
+    # Nachlauf, in dem der Endzustand der Textblendung gesetzt wird.
+    SETTLE_MS = 60
 
     def __init__(self) -> None:
         super().__init__()
@@ -355,6 +359,9 @@ class AppHeader(QWidget):
 
         # Eine Animation je Block - wiederverwendet, damit kein Objekt waehrend
         # eines laufenden Wechsels geloescht wird.
+        # Zaehler des Gleitens: ein Nachzuegler aus einer frueheren Runde darf
+        # keine spaetere Bewegung mehr ueberschreiben.
+        self._place_serial = 0
         self._slides: dict[str, QPropertyAnimation] = {}
         for name, block in self._blocks.items():
             if name == "pdfblack":
@@ -370,6 +377,10 @@ class AppHeader(QWidget):
             "pdfcompare": 0.0,
             "pdfocr": 0.0,
         }
+        # Zaehler der Textblendung: ein Nachzuegler aus einer frueheren Runde
+        # darf einen spaeter gestarteten Fade nicht mehr ueberschreiben.
+        self._text_serial = 0
+        self._fade_run: dict[str, int] = {}
         self._fades: dict[str, QVariantAnimation] = {}
         for name, block in self._blocks.items():
             block.set_text_opacity(self._targets[name])
@@ -379,10 +390,7 @@ class AppHeader(QWidget):
             animation.valueChanged.connect(
                 lambda value, target=block: target.set_text_opacity(float(value))
             )
-            # Der letzte Animationsschritt trifft das Ziel nicht exakt.
-            animation.finished.connect(
-                lambda key=name: self._blocks[key].set_text_opacity(self._targets[key])
-            )
+            animation.finished.connect(lambda key=name: self._snap_text(key))
             self._fades[name] = animation
 
         for name, block in self._blocks.items():
@@ -459,12 +467,17 @@ class AppHeader(QWidget):
             return
         program = program or self._program
         height = self.height()
+        self._place_serial += 1
+        serial = self._place_serial
+        ziele: dict[str, QPoint] = {}
+        gleitet = False
         for name, block in self._blocks.items():
             block.adjustSize()
             end = QPoint(
                 self.block_x(name, program),
                 max(0, (height - block.height()) // 2),
             )
+            ziele[name] = end
             if name == "pdfblack":
                 block.move(end)
                 continue
@@ -476,6 +489,14 @@ class AppHeader(QWidget):
             animation.setStartValue(block.pos())
             animation.setEndValue(end)
             animation.start()
+            gleitet = True
+        if gleitet:
+            # Wie bei der Textblendung: meldet ein abgebrochenes Gleiten sein
+            # Ende nicht, bleiben die Knoepfe sonst zwischen den Plaetzen stehen.
+            QTimer.singleShot(
+                self.SLIDE_MS + self.SETTLE_MS,
+                lambda: self._settle_slides(serial, ziele),
+            )
 
         # Feste Stapelreihenfolge von links nach rechts: so liegt der Text
         # eines Blocks nie ueber dem Logo des naechsten. Damit bleibt jeder
@@ -497,16 +518,58 @@ class AppHeader(QWidget):
         for name in self._targets:
             self._targets[name] = 1.0 if name == program else 0.0
 
+        self._text_serial += 1
+        serial = self._text_serial
+        blendet = False
         for name, block in self._blocks.items():
             animation = self._fades[name]
             target = self._targets[name]
             animation.stop()
-            if not animate:
+            self._fade_run[name] = serial
+            if not animate or block.text_opacity == target:
                 block.set_text_opacity(target)
                 continue
             animation.setStartValue(float(block.text_opacity))
             animation.setEndValue(float(target))
             animation.start()
+            blendet = True
+        if blendet:
+            # Sicherheitsnetz: meldet eine unterbrochene Blende ihr Ende nicht,
+            # steht sonst der halb sichtbare Text eines inaktiven Programms
+            # stehen. Nach dem Nachlauf gilt der Endzustand.
+            QTimer.singleShot(
+                self.TEXT_MS + self.SETTLE_MS,
+                lambda: self._settle_text(serial),
+            )
+
+    def _settle_slides(self, serial: int, ziele: dict[str, QPoint]) -> None:
+        """Endpositionen des Gleitens erzwingen - auch ohne Abschlussmeldung."""
+        if serial != self._place_serial:
+            return
+        for name, ziel in ziele.items():
+            block = self._blocks[name]
+            if block.pos() == ziel:
+                continue
+            animation = self._slides.get(name)
+            if animation is not None:
+                animation.stop()
+            block.move(ziel)
+
+    def _snap_text(self, name: str) -> None:
+        """Eine beendete Blende exakt auf ihr Ziel setzen.
+
+        Gehoert sie zu einer frueheren Runde, bleibt sie wirkungslos.
+        """
+        if self._fade_run.get(name) != self._text_serial:
+            return
+        self._blocks[name].set_text_opacity(self._targets[name])
+
+    def _settle_text(self, serial: int) -> None:
+        """Endzustand der Textblendung erzwingen - auch ohne Abschlussmeldung."""
+        if serial != self._text_serial:
+            return
+        for name, block in self._blocks.items():
+            block.set_text_opacity(self._targets[name])
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -528,6 +591,11 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self._path: str | None = None
+        # Stapel aus der zweiten Ablageflaeche: eine Datei nach der anderen.
+        self._queue: list[str] = []
+        self._queue_total = 0
+        self._queue_pos = 0
+        self._queue_done = 0
         # Ergebnis der automatisch angestossenen Texterkennung gleich laden?
         self._auto_open_ocr = False
         # Datei aus PDFocr: sie hat ihre Textebene schon - nicht erneut auslesen.
@@ -578,6 +646,10 @@ class MainWindow(QMainWindow):
         bar.setSpacing(8)
 
         self.btn_open = QPushButton("PDF öffnen …")
+        self.btn_queue = QPushButton("PDFs öffnen …")
+        self.btn_queue.setToolTip(
+            "Mehrere PDF-Dateien als Stapel öffnen – eine nach der anderen."
+        )
         self.btn_preview = QPushButton("Vorschau erzeugen")
         self.btn_preview.setObjectName("Primary")
         self.btn_save = QPushButton("Geschwärzte Kopie speichern")
@@ -588,14 +660,35 @@ class MainWindow(QMainWindow):
             "Schwärzt alle aktiven Treffer und legt die Kopie in deinem "
             "Benutzerordner ab; sie wird beim Beenden entfernt."
         )
-        for button in (self.btn_open, self.btn_preview, self.btn_save):
+        for button in (
+            self.btn_open,
+            self.btn_queue,
+            self.btn_preview,
+            self.btn_save,
+        ):
             button.setCursor(Qt.PointingHandCursor)
 
         bar.addWidget(self.btn_open)
+        bar.addWidget(self.btn_queue)
         bar.addWidget(self.btn_preview)
         bar.addSpacing(2)
         bar.addWidget(self.btn_save)
         bar.addStretch(1)
+
+        # Fortschritt des Stapels („Stapel 2 von 5“) und ein Knopf, um eine
+        # Datei ohne Speichern zu ueberspringen.
+        self.queue_label = QLabel("")
+        self.queue_label.setObjectName("Hint")
+        self.queue_label.hide()
+        self.btn_queue_next = QToolButton()
+        self.btn_queue_next.setText("Nächste Datei")
+        self.btn_queue_next.setToolTip(
+            "Ohne Speichern zur nächsten Datei des Stapels"
+        )
+        self.btn_queue_next.clicked.connect(lambda: self._open_next_in_queue())
+        self.btn_queue_next.hide()
+        bar.addWidget(self.queue_label)
+        bar.addWidget(self.btn_queue_next)
 
         self.btn_zoom_out = QToolButton()
         self.btn_zoom_out.setText("\u2212")
@@ -627,6 +720,14 @@ class MainWindow(QMainWindow):
         self.controls.setMaximumWidth(420)
 
         self.dropzone = DropZone()
+        self.queue_zone = DropZone(mehrere=True)
+        self.dropzones = QWidget()
+        zone_layout = QHBoxLayout(self.dropzones)
+        zone_layout.setContentsMargins(16, 16, 16, 16)
+        zone_layout.setSpacing(14)
+        zone_layout.addWidget(self.dropzone, 1)
+        zone_layout.addWidget(self.queue_zone, 1)
+
         self.canvas = PdfCanvas()
         self.scroll = QScrollArea()
         self.scroll.setObjectName("PreviewScroll")
@@ -636,7 +737,7 @@ class MainWindow(QMainWindow):
         self.scroll.setWidget(self.canvas)
 
         self.stack = QStackedWidget()
-        self.stack.addWidget(self.dropzone)
+        self.stack.addWidget(self.dropzones)
         self.stack.addWidget(self.scroll)
 
         # Hinweis beim Einlesen einer PDF mit vorhandener Textebene.
@@ -882,6 +983,8 @@ class MainWindow(QMainWindow):
 
         self.dropzone.browseRequested.connect(self._choose_file)
         self.dropzone.fileDropped.connect(self.load_pdf)
+        self.btn_queue.clicked.connect(self._choose_queue)
+        self.queue_zone.filesDropped.connect(self.start_queue)
 
         self.canvas.regionDrawn.connect(self._add_manual_region)
         self.canvas.wordActivated.connect(self._add_word_region)
@@ -915,9 +1018,105 @@ class MainWindow(QMainWindow):
         if path:
             self.load_pdf(path)
 
-    def load_pdf(self, path: str) -> None:
+    def _choose_queue(self) -> None:
+        """Mehrere PDFs fuer den Stapel auswaehlen."""
+        pfade, _ = QFileDialog.getOpenFileNames(
+            self, "PDFs öffnen", self._last_dir, "PDF-Dateien (*.pdf)"
+        )
+        if pfade:
+            self.start_queue(pfade)
+
+    def start_queue(self, pfade: list[str]) -> None:
+        """Einen Stapel beginnen - oder weitere Dateien anhaengen.
+
+        Laeuft schon ein Stapel, kommen die neuen Dateien hinten dazu; die
+        bereits wartenden bleiben erhalten.
+        """
         if self._busy:
             return
+        dateien: list[str] = []
+        for pfad in pfade:
+            if pfad.lower().endswith(".pdf") and pfad not in dateien:
+                dateien.append(pfad)
+        if not dateien:
+            return
+        if self._queue_total:
+            bekannt = {self._path, *self._queue}
+            weitere = [pfad for pfad in dateien if pfad not in bekannt]
+            if not weitere:
+                return
+            self._queue.extend(weitere)
+            self._queue_total += len(weitere)
+            self._refresh_queue_label()
+            self.statusBar().showMessage(
+                f"{len(weitere)} Datei(en) zum Stapel hinzugefügt.", 8000
+            )
+            return
+        self._queue = dateien
+        self._queue_total = len(dateien)
+        self._queue_pos = 0
+        self._queue_done = 0
+        self._open_next_in_queue()
+
+    def _open_next_in_queue(self) -> None:
+        """Naechste vorgemerkte Datei oeffnen; am Ende den Stapel abschliessen."""
+        if self._busy:
+            return
+        while self._queue:
+            pfad = self._queue.pop(0)
+            if self.load_pdf(pfad):
+                # Fortschritt zaehlt geoeffnete Dateien, nicht nur gespeicherte:
+                # eine uebersprungene Datei soll die Nummer weiterruecken.
+                self._queue_pos += 1
+                self._refresh_queue_label()
+                return
+            self.statusBar().showMessage(
+                f"„{os.path.basename(pfad)}“ konnte nicht geöffnet werden – "
+                "übersprungen.",
+                12000,
+            )
+        self._finish_queue()
+
+    def _finish_queue(self) -> None:
+        """Alle Dateien des Stapels sind durch."""
+        gespeichert = self._queue_done
+        gesamt = self._queue_total
+        self._queue = []
+        self._queue_total = 0
+        self._queue_pos = 0
+        self._queue_done = 0
+        self._refresh_queue_label()
+        if gespeichert:
+            self.statusBar().showMessage(
+                f"Stapel abgearbeitet: {gespeichert} von {gesamt} Datei(en) "
+                "geschwärzt.",
+                15000,
+            )
+        else:
+            self.statusBar().showMessage(
+                "Stapel beendet – keine Datei geöffnet.", 12000
+            )
+
+    def _refresh_queue_label(self) -> None:
+        """Fortschritt und offene Dateien in der Werkzeugleiste anzeigen."""
+        if not self._queue_total:
+            self.queue_label.hide()
+            self.btn_queue_next.hide()
+            return
+        aktuell = min(self._queue_pos, self._queue_total)
+        self.queue_label.setText(f"Stapel {aktuell} von {self._queue_total}")
+        rest = [os.path.basename(pfad) for pfad in self._queue]
+        self.queue_label.setToolTip(
+            ("Noch offen:\n" + "\n".join(rest)) if rest else "Letzte Datei im Stapel"
+        )
+        self.queue_label.show()
+        self.btn_queue_next.setVisible(bool(rest))
+        self.btn_queue_next.setEnabled(not self._busy)
+
+    def load_pdf(self, path: str) -> bool:
+        """Eine PDF oeffnen; ``False``, wenn sie nicht geoeffnet werden konnte."""
+        if self._busy:
+            return False
         # Ein manuell geoeffnetes Dokument beendet die OCR-Automatik.
         self._auto_open_ocr = False
         if self._program != "pdfblack":
@@ -933,16 +1132,16 @@ class MainWindow(QMainWindow):
                 QLineEdit.Password,
             )
             if not ok or not entered:
-                return
+                return False
             try:
                 doc = open_document(path, entered)
             except Exception as exc:  # noqa: BLE001
                 self._show_error(exc)
-                return
+                return False
             password = entered
         except Exception as exc:  # noqa: BLE001
             self._show_error(exc)
-            return
+            return False
 
         page_count = doc.page_count
         doc.close()
@@ -951,7 +1150,7 @@ class MainWindow(QMainWindow):
             self.canvas.load(path, password)
         except Exception as exc:  # noqa: BLE001
             self._show_error(exc)
-            return
+            return False
 
         self._path = path
         self._password = password
@@ -995,6 +1194,7 @@ class MainWindow(QMainWindow):
             self._offer_rebuild(path, password)
             # Ohne Klick: die Prüfung laeuft direkt nach dem Oeffnen an.
             self._auto_detect()
+        return True
 
     def _on_ocr_result(self, path: str) -> None:
         """Fertige Texterkennung: Ergebnis gleich in PDFblack laden.
@@ -1050,24 +1250,30 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _pdf_from_event(event) -> str | None:
+    def _pdfs_from_event(event) -> list[str]:
+        """Alle abgelegten PDF-Dateien in der Reihenfolge des Ablegens."""
         if not event.mimeData().hasUrls():
-            return None
+            return []
+        pfade: list[str] = []
         for url in event.mimeData().urls():
             path = url.toLocalFile()
-            if path.lower().endswith(".pdf"):
-                return path
-        return None
+            if path.lower().endswith(".pdf") and path not in pfade:
+                pfade.append(path)
+        return pfade
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802
-        if self._pdf_from_event(event) and not self._busy:
+        if self._pdfs_from_event(event) and not self._busy:
             event.acceptProposedAction()
 
     def dropEvent(self, event) -> None:  # noqa: N802
-        path = self._pdf_from_event(event)
-        if path:
-            event.acceptProposedAction()
-            self.load_pdf(path)
+        pfade = self._pdfs_from_event(event)
+        if not pfade:
+            return
+        event.acceptProposedAction()
+        if len(pfade) > 1:
+            self.start_queue(pfade)
+        else:
+            self.load_pdf(pfade[0])
 
     # ------------------------------------------------------------------
     # Erkennung
@@ -1639,6 +1845,8 @@ class MainWindow(QMainWindow):
         has_doc = self._path is not None
         active = sum(1 for finding in self._findings if finding.enabled)
         self.btn_open.setEnabled(not self._busy)
+        self.btn_queue.setEnabled(not self._busy)
+        self.btn_queue_next.setEnabled(not self._busy)
         self.btn_preview.setEnabled(has_doc and not self._busy)
         self.btn_preview.setText(
             "Vorschau erzeugen" if not self._findings else "Erkennung erneuern"
@@ -1698,6 +1906,11 @@ class MainWindow(QMainWindow):
 
         self.compare_view.remember(target)
         self.statusBar().showMessage(f"{count} Stellen geschwärzt: {target}")
+        if self._queue_total:
+            # Im Stapel ohne Rueckfrage weiter: die naechste Datei kommt gleich.
+            self._queue_done += 1
+            self._open_next_in_queue()
+            return
         QMessageBox.information(
             self,
             "Geschwärzte Kopie gespeichert",
@@ -1955,6 +2168,14 @@ class MainWindow(QMainWindow):
             self._worker.cancel()
             self._worker.wait(3000)
             self._worker = None
+        # Das geladene Dokument zuerst schliessen: unter Windows ist eine
+        # geoeffnete PDF gesperrt. Wird sie erst spaeter entladen, scheitert
+        # das Aufraeumen der Ablage und meldet einen Fehler fuer genau die
+        # geladene Datei.
+        self.canvas.clear()
+        self._path = None
+        self._password = None
+        self._findings = []
         # Geschwaerzte Kopien liegen im Benutzerordner und verschwinden beim
         # Beenden wieder - samt Kopien im Uebergabeordner an die Agenten.
         kopien = [str(pfad) for pfad in ablage.dateien()]
@@ -1962,9 +2183,7 @@ class MainWindow(QMainWindow):
             delete_redacted(kopien)
         # PDFcompare: Listen leeren und nach den Dateien fragen.
         self.compare_view.cleanup_on_close(self)
-        # Arbeitsdateien der Texterkennung: die gerade geoeffnete Datei bleibt
-        # stehen, bis das Dokument geschlossen ist, und verschwindet danach.
-        self.ocr_view.cleanup_temp(self._path)
-        self.canvas.clear()
+        # Arbeitsdateien der Texterkennung: das Dokument ist jetzt geschlossen,
+        # also darf auch seine Arbeitsdatei weg.
         self.ocr_view.cleanup_temp()
         event.accept()

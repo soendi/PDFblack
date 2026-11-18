@@ -127,24 +127,27 @@ def _card(title: str, description: str = "") -> tuple[QFrame, QVBoxLayout]:
 
 
 class DropZone(QWidget):
-    """Grosse Ablageflaeche, solange keine Datei geladen ist."""
+    """Ablageflaeche fuer eine Datei oder einen ganzen Stapel PDFs."""
 
     fileDropped = Signal(str)
+    filesDropped = Signal(list)
     browseRequested = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, mehrere: bool = False) -> None:
         super().__init__(parent)
         self.setAcceptDrops(True)
         self._active = False
+        self._mehrere = mehrere
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(24, 24, 24, 24)
-        outer.setAlignment(Qt.AlignCenter)
+        outer.setContentsMargins(0, 0, 0, 0)
 
+        # Bei zwei Ablageflaechen teilen sich beide die Flaeche und passen
+        # sich an, statt auf einer festen Groesse zu bestehen.
         self.frame = QFrame()
         self.frame.setObjectName("DropZone")
         self.frame.setProperty("dragActive", False)
-        self.frame.setFixedSize(QSize(560, 340))
+        self.frame.setMinimumSize(QSize(170, 240))
         outer.addWidget(self.frame)
 
         layout = QVBoxLayout(self.frame)
@@ -156,15 +159,20 @@ class DropZone(QWidget):
         glyph.setStyleSheet("font-size: 46px; color: #4a5361;")
         glyph.setAlignment(Qt.AlignCenter)
 
-        title = QLabel("PDF-Datei hierher ziehen")
+        title = QLabel(
+            "Mehrere PDF-Dateien hierher ziehen"
+            if mehrere
+            else "PDF-Datei hierher ziehen"
+        )
         title.setStyleSheet("font-size: 17px; font-weight: 600;")
         title.setAlignment(Qt.AlignCenter)
+        title.setWordWrap(True)
 
         subtitle = QLabel("oder")
         subtitle.setObjectName("Hint")
         subtitle.setAlignment(Qt.AlignCenter)
 
-        button = QPushButton("PDF öffnen …")
+        button = QPushButton("PDFs auswählen …" if mehrere else "PDF öffnen …")
         button.setObjectName("Primary")
         button.setCursor(Qt.PointingHandCursor)
         button.setFixedWidth(160)
@@ -179,7 +187,10 @@ class DropZone(QWidget):
         layout.addStretch(1)
 
         note = QLabel(
-            "Die Datei bleibt unverändert – geschwärzt wird erst in der "
+            "Die Dateien werden nacheinander geöffnet – nach „Geschwärzte Kopie "
+            "speichern“ kommt automatisch die nächste."
+            if mehrere
+            else "Die Datei bleibt unverändert – geschwärzt wird erst in der "
             "geschwärzten Kopie."
         )
         note.setObjectName("Hint")
@@ -187,10 +198,20 @@ class DropZone(QWidget):
         note.setWordWrap(True)
         layout.addWidget(note)
 
+    @staticmethod
+    def _pdf_pfade(event) -> list[str]:
+        """Alle abgelegten PDF-Dateien in der Reihenfolge des Ablegens."""
+        if not event.mimeData().hasUrls():
+            return []
+        pfade: list[str] = []
+        for url in event.mimeData().urls():
+            pfad = url.toLocalFile()
+            if pfad.lower().endswith(".pdf") and pfad not in pfade:
+                pfade.append(pfad)
+        return pfade
+
     def _accepts(self, event) -> bool:
-        return event.mimeData().hasUrls() and any(
-            url.toLocalFile().lower().endswith(".pdf") for url in event.mimeData().urls()
-        )
+        return bool(self._pdf_pfade(event))
 
     def _set_active(self, active: bool) -> None:
         self._active = active
@@ -208,11 +229,14 @@ class DropZone(QWidget):
 
     def dropEvent(self, event) -> None:  # noqa: N802
         self._set_active(False)
-        for url in event.mimeData().urls():
-            path = url.toLocalFile()
-            if path.lower().endswith(".pdf"):
-                self.fileDropped.emit(path)
-                break
+        pfade = self._pdf_pfade(event)
+        if not pfade:
+            return
+        event.acceptProposedAction()
+        if self._mehrere:
+            self.filesDropped.emit(pfade)
+        else:
+            self.fileDropped.emit(pfade[0])
 
 
 # ---------------------------------------------------------------------------
@@ -248,12 +272,12 @@ class ControlsPanel(QScrollArea):
         form.setSpacing(6)
         form.setContentsMargins(0, 0, 0, 0)
 
-        self.edit_first = _line("Maximiliane")
-        self.edit_last = _line("Schmidt-Lorenz")
-        self.edit_street = _line("Königsallee 42 a")
-        self.edit_zip = _line("80331")
-        self.edit_city = _line("München")
-        self.edit_id = _line("PE-8842/2024")
+        self.edit_first = _line("Chris")
+        self.edit_last = _line("Schorro")
+        self.edit_street = _line("Wolfsbachstrasse 6")
+        self.edit_zip = _line("9436")
+        self.edit_city = _line("Balgach")
+        self.edit_id = _line("HH-1488/1488")
         for label, widget in (
             ("Vorname", self.edit_first),
             ("Nachname", self.edit_last),

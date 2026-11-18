@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pytest
 
 try:  # Qt braucht je nach System zusaetzliche Bibliotheken
-    from PySide6 import QtCore, QtTest, QtWidgets
+    from PySide6 import QtCore, QtGui, QtTest, QtWidgets
 except Exception as exc:  # noqa: BLE001 - ohne Qt wird der Test uebersprungen
     pytest.skip(f"Qt nicht verfuegbar: {exc}", allow_module_level=True)
 
@@ -741,3 +741,410 @@ def test_lernfenster_zeigt_und_loescht_einzelne_beispiele(
     assert fenster.table.rowCount() == 1
     assert [eintrag["text"] for eintrag in lerndatei.eintraege()] == ["Muster AG"]
     fenster.close()
+
+
+# ---------------------------------------------------------------------------
+# Kopfzeile: Textblendung bei schnellem Wechsel
+# ---------------------------------------------------------------------------
+
+
+def test_schneller_wechsel_zeigt_genau_einen_text(window, qt_app):
+    """Nach schnellem Hin und Her ist nur der Text des aktiven Programms da."""
+    header = window.header
+    logos = (header.black.logo, header.compare.logo, header.ocr.logo)
+
+    for ziel in ("pdfblack", "pdfcompare", "pdfocr"):
+        for _ in range(6):
+            _click(logos[_nummer()])
+            qt_app.processEvents()
+            QtTest.QTest.qWait(4)
+        header.set_program(ziel)
+        QtTest.QTest.qWait(600)
+
+        sichtbar = {
+            name: block.text_opacity
+            for name, block in header._blocks.items()
+            if block.text_opacity > 0.01
+        }
+        assert sichtbar == {ziel: sichtbar[ziel]}, (ziel, sichtbar)
+        assert sichtbar[ziel] > 0.99, (ziel, sichtbar)
+
+
+def _nummer() -> int:
+    """Reihum ein anderer Knopf - fuer den schnellen Wechsel im Test."""
+    _nummer.zaehler = (getattr(_nummer, "zaehler", 0) + 1) % 3
+    return _nummer.zaehler
+
+
+def test_abgebrochene_textblendung_landet_trotzdem_im_ziel(window, qt_app):
+    """Ein verschlucktes Fade-Ende darf keinen fremden Text stehen lassen.
+
+    Bei schnellem Umschalten kann die Blende mitten im Lauf enden, ohne ihr
+    Ende zu melden. Danach darf der Text des inaktiven Programms nicht halb
+    sichtbar stehen bleiben.
+    """
+    header = window.header
+    header.set_program("pdfocr", animate=False)
+    assert header.ocr.text_opacity > 0.99
+
+    header.set_program("pdfblack")
+    qt_app.processEvents()
+    # Die laufende Blende endet ohne Abschluss - wie bei einem abgebrochenen
+    # Animationsschritt.
+    for animation in header._fades.values():
+        animation.stop()
+
+    assert _wait_until(lambda: header.black.text_opacity > 0.99, 1000), (
+        "aktiver Text wurde nicht eingeblendet",
+        {n: round(b.text_opacity, 2) for n, b in header._blocks.items()},
+    )
+    assert _wait_until(lambda: header.ocr.text_opacity < 0.01, 1000), (
+        "Text des inaktiven Programms blieb stehen",
+        {n: round(b.text_opacity, 2) for n, b in header._blocks.items()},
+    )
+    assert header.compare.text_opacity < 0.01
+
+
+def test_schliessen_entlaedt_das_dokument_vor_dem_aufraeumen(
+    window, qt_app, tmp_path, monkeypatch
+):
+    """Beim Beenden ist die geladene Datei zu, bevor Dateien geloescht werden.
+
+    Unter Windows laesst sich eine noch geoeffnete PDF nicht loeschen; das
+    Aufraeumen der Ablage meldete dann einen Fehler fuer die geladene Datei.
+    Der Test sperrt die Datei wie Windows, solange das Dokument offen ist.
+    """
+    from pdfblack.core import ablage
+    from pdfblack.ui import compare, main_window
+
+    monkeypatch.setattr(ablage, "ORDNER", tmp_path / "Ablage")
+
+    # Die geladene Datei ist eine geschwaerzte Kopie aus der Ablage - genau
+    # der Fall, in dem Windows die Datei beim Aufraeumen sperrt.
+    original = tmp_path / "Brief.pdf"
+    _text_pdf(original)
+    kopie = ablage.ORDNER / "Brief_geschwaerzt.pdf"
+    kopie.parent.mkdir(parents=True, exist_ok=True)
+    kopie.write_bytes(original.read_bytes())
+    window.compare_view.remember(str(kopie))
+    window.load_pdf(str(kopie))
+    qt_app.processEvents()
+    assert window.canvas._doc is not None
+    assert ablage.dateien() == [kopie]
+
+    # Wie unter Windows: solange das Dokument offen ist, ist die Datei
+    # gesperrt und laesst sich nicht loeschen.
+    gesperrt: list[str] = []
+    echt_unlink = Path.unlink
+
+    def unlink_wie_gesperrt(self, missing_ok: bool = False):
+        if (
+            os.path.abspath(str(self)) == os.path.abspath(str(kopie))
+            and window.canvas._doc is not None
+        ):
+            gesperrt.append(str(self))
+            raise PermissionError(32, "Der Prozess kann nicht auf die Datei zugreifen.")
+        return echt_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", unlink_wie_gesperrt)
+
+    # Gegenprobe: geoeffnet ist die Datei wirklich gesperrt, der Test
+    # wuerde ein vergessenes Entladen also bemerken.
+    with pytest.raises(PermissionError):
+        kopie.unlink()
+    assert gesperrt
+    gesperrt.clear()
+
+    # Beim Schliessen darf keine Fehlermeldung mehr erscheinen.
+    meldungen: list[str] = []
+    monkeypatch.setattr(
+        compare.QMessageBox,
+        "warning",
+        staticmethod(lambda *args, **kwargs: meldungen.append(str(args[2]))),
+    )
+    monkeypatch.setattr(
+        main_window.QMessageBox,
+        "critical",
+        staticmethod(lambda *args, **kwargs: meldungen.append(str(args[2]))),
+    )
+    # Auf die Frage "geschwaerzte Dateien loeschen?" mit Ja antworten, damit
+    # das Loeschen wirklich versucht wird.
+    monkeypatch.setattr(
+        compare.QMessageBox,
+        "question",
+        staticmethod(lambda *args, **kwargs: QtWidgets.QMessageBox.Yes),
+    )
+
+    noch_offen = []
+    echt = main_window.delete_redacted
+
+    def merken(pfade):
+        noch_offen.append(window.canvas._doc is not None)
+        return echt(pfade)
+
+    monkeypatch.setattr(main_window, "delete_redacted", merken)
+
+    window.close()
+    qt_app.processEvents()
+
+    assert meldungen == [], f"Fehlermeldung beim Schliessen: {meldungen}"
+    assert noch_offen, "das Aufraeumen lief nicht"
+    assert not any(noch_offen), "Dokument war beim Loeschen noch geoeffnet"
+    assert gesperrt == [], "die Datei war beim Loeschen noch gesperrt"
+    assert window.canvas._doc is None
+    assert window._path is None
+    assert not kopie.exists(), "die Kopie blieb liegen"
+    assert ablage.dateien() == []
+
+
+def test_abgebrochenes_gleiten_landet_trotzdem_am_platz(window, qt_app):
+    """Bricht das Verschieben ab, stehen die Knoepfe trotzdem an ihrem Platz."""
+    header = window.header
+    header.set_program("pdfblack", animate=False)
+    qt_app.processEvents()
+
+    header.set_program("pdfocr")
+    qt_app.processEvents()
+    for animation in header._slides.values():
+        animation.stop()
+
+    assert _wait_until(
+        lambda: header.compare.x() == header.title_x()
+        and header.ocr.x() == header.title_x() + header.LOGO_SIZE + header.GAP,
+        1000,
+    ), {n: block.x() for n, block in header._blocks.items()}
+
+
+# ---------------------------------------------------------------------------
+# Stapel: zweite Ablageflaeche, eine Datei nach der anderen
+# ---------------------------------------------------------------------------
+
+
+def _stapel_pdfs(tmp_path, anzahl: int) -> list[str]:
+    """Mehrere kleine PDFs mit Text, wie sie in einem Stapel landen."""
+    pfade: list[str] = []
+    for nummer in range(anzahl):
+        pfad = tmp_path / f"stapel-{nummer}.pdf"
+        _text_pdf(pfad)
+        pfade.append(str(pfad))
+    return pfade
+
+
+def _drop(zone, pfade) -> None:
+    """Dateien so ablegen, wie es der Datei-Explorer tut."""
+    mime = QtCore.QMimeData()
+    mime.setUrls([QtCore.QUrl.fromLocalFile(pfad) for pfad in pfade])
+    event = QtGui.QDropEvent(
+        QtCore.QPointF(10, 10),
+        QtCore.Qt.CopyAction,
+        mime,
+        QtCore.Qt.LeftButton,
+        QtCore.Qt.NoModifier,
+    )
+    zone.dropEvent(event)
+
+
+def _stapel_treffer():
+    """Ein aktiver Treffer, damit gespeichert werden kann."""
+    from pdfblack.core.models import Category, Finding
+
+    return Finding(
+        text="Ein normaler Brief",
+        category=Category.PERSON,
+        page=0,
+        rects=[(72.0, 88.0, 240.0, 104.0)],
+        source="Test",
+        entity="PERSON",
+        score=1.0,
+        enabled=True,
+        uid=1,
+    )
+
+
+def test_zweite_ablageflaeche_nimmt_mehrere_dateien(window, qt_app, tmp_path):
+    """Drop auf die rechte Flaeche: erste Datei oeffnet, der Rest wartet."""
+    dateien = _stapel_pdfs(tmp_path, 3)
+
+    _drop(window.queue_zone, dateien)
+    qt_app.processEvents()
+
+    assert window._path == dateien[0]
+    assert window._queue == dateien[1:]
+    assert window._queue_total == 3
+    assert window.queue_label.text() == "Stapel 1 von 3"
+    assert not window.queue_label.isHidden()
+    assert not window.btn_queue_next.isHidden()
+    # Der Tooltip nennt die noch offenen Dateien.
+    assert "stapel-2.pdf" in window.queue_label.toolTip()
+
+
+def test_erste_ablageflaeche_bleibt_bei_einer_datei(window, qt_app, tmp_path):
+    """Die linke Flaeche oeffnet weiter genau eine Datei, ohne Stapel."""
+    dateien = _stapel_pdfs(tmp_path, 2)
+
+    _drop(window.dropzone, dateien)
+    qt_app.processEvents()
+
+    assert window._path == dateien[0]
+    assert window._queue == []
+    assert window._queue_total == 0
+    assert window.queue_label.isHidden()
+
+
+def test_speichern_oeffnet_die_naechste_datei(window, qt_app, tmp_path, monkeypatch):
+    """Speichern legt die Kopie ab und oeffnet die naechste Datei des Stapels."""
+    from pdfblack.core import ablage
+
+    monkeypatch.setattr(ablage, "ORDNER", tmp_path / "Ablage")
+    dateien = _stapel_pdfs(tmp_path, 2)
+
+    _drop(window.queue_zone, dateien)
+    qt_app.processEvents()
+    window._findings = [_stapel_treffer()]
+    window._sync_findings()
+
+    window._save_as()
+    qt_app.processEvents()
+
+    # Die Kopie der ersten Datei ist geschrieben ...
+    assert [datei.name for datei in ablage.dateien()] == [
+        "stapel-0_geschwaerzt.pdf"
+    ]
+    # ... und die zweite Datei steht schon bereit.
+    assert window._path == dateien[1]
+    assert window._queue == []
+    assert window._queue_done == 1
+    assert window.queue_label.text() == "Stapel 2 von 2"
+
+    # Beim Beenden raeumt PDFblack die Ablage; der Abfraagedialog entfaellt,
+    # weil danach keine geschwaerzte Datei mehr existiert.
+    window.close()
+    qt_app.processEvents()
+    assert ablage.dateien() == []
+
+
+def test_naechste_datei_rueckt_ohne_speichern_weiter(window, qt_app, tmp_path):
+    """Ueberspringen zaehlt als geoeffnet, aber nicht als gespeichert."""
+    dateien = _stapel_pdfs(tmp_path, 2)
+
+    _drop(window.queue_zone, dateien)
+    qt_app.processEvents()
+
+    window._open_next_in_queue()
+    qt_app.processEvents()
+
+    assert window._path == dateien[1]
+    assert window._queue == []
+    assert window._queue_total == 2
+    assert window._queue_done == 0, "uebersprungen heisst nicht geschwaerzt"
+    assert window.queue_label.text() == "Stapel 2 von 2"
+
+
+def test_weitere_dateien_haengen_sich_an_den_laufenden_stapel(
+    window, qt_app, tmp_path
+):
+    """Neue Dateien kommen hinten dazu; die offene wird nicht doppelt gezaehlt."""
+    dateien = _stapel_pdfs(tmp_path, 3)
+
+    _drop(window.queue_zone, dateien[:2])
+    qt_app.processEvents()
+    assert window._queue_total == 2
+
+    window.start_queue([dateien[2], dateien[0]])
+    qt_app.processEvents()
+
+    assert window._queue_total == 3
+    # Die wartende Datei bleibt, die neue kommt hinten dazu; die bereits
+    # geoeffnete Datei wird nicht ein zweites Mal vorgemerkt.
+    assert window._queue == [dateien[1], dateien[2]]
+    assert window._path == dateien[0]
+    assert window.queue_label.text() == "Stapel 1 von 3"
+
+
+def test_stapel_erkennt_scan_und_kehrt_nach_pdfblack_zurueck(
+    window, qt_app, tmp_path, monkeypatch
+):
+    """Ein Scan im Stapel geht denselben Weg wie eine einzeln abgelegte Datei."""
+    from pdfblack.core import ablage
+
+    monkeypatch.setattr(ablage, "ORDNER", tmp_path / "Ablage")
+    _fake_engine(monkeypatch)
+
+    text_pdf = tmp_path / "brief.pdf"
+    _text_pdf(text_pdf)
+    scan = tmp_path / "scan.pdf"
+    _scan_pdf(scan)
+
+    window.start_queue([str(text_pdf), str(scan)])
+    qt_app.processEvents()
+    assert window._path == str(text_pdf)
+    assert window._queue == [str(scan)]
+
+    # Erste Datei speichern -> der Scan wird geoeffnet und ausgelesen.
+    window._findings = [_stapel_treffer()]
+    window._sync_findings()
+    window._save_as()
+    qt_app.processEvents()
+
+    assert _wait_until(lambda: window.ocr_view._path == str(scan)), (
+        "Scan wurde nicht an PDFocr uebergeben"
+    )
+    assert _wait_until(lambda: window.ocr_view._result_path is not None), (
+        "Texterkennung lief nicht an"
+    )
+    ergebnis = window.ocr_view._result_path
+    assert _wait_until(lambda: window._path == ergebnis), (
+        "OCR-Ergebnis kam nicht zu PDFblack zurueck"
+    )
+    assert window._program == "pdfblack"
+    assert _wait_until(lambda: window.workspace.currentWidget() is window.black_view), (
+        "PDFblack wurde nicht wieder angezeigt"
+    )
+    assert window._queue_total == 2 and window._queue == []
+    assert "Brief" in window.ocr_view.text.toPlainText()
+
+    # Danach wird die OCR-Fassung geschwaerzt - der Stapel ist damit durch.
+    window._findings = [_stapel_treffer()]
+    window._sync_findings()
+    window._save_as()
+    qt_app.processEvents()
+    assert window._queue_total == 0
+    assert len(ablage.dateien()) == 2
+
+    # Kopflisten leeren, damit beim Schliessen nicht modal nachgefragt wird.
+    window.compare_view.clear_all()
+    window.close()
+    qt_app.processEvents()
+    assert ablage.dateien() == []
+
+
+def test_stapel_endet_nach_der_letzten_datei(window, qt_app, tmp_path, monkeypatch):
+    """Nach der letzten Datei ist der Stapel leer und der Fortschritt weg."""
+    from pdfblack.core import ablage
+
+    monkeypatch.setattr(ablage, "ORDNER", tmp_path / "Ablage")
+    dateien = _stapel_pdfs(tmp_path, 2)
+
+    _drop(window.queue_zone, dateien)
+    qt_app.processEvents()
+
+    for nummer in range(2):
+        assert window._path == dateien[nummer]
+        window._findings = [_stapel_treffer()]
+        window._sync_findings()
+        window._save_as()
+        qt_app.processEvents()
+
+    assert window._queue == []
+    assert window._queue_total == 0
+    assert window.queue_label.isHidden()
+    assert window.btn_queue_next.isHidden()
+    assert sorted(datei.name for datei in ablage.dateien()) == [
+        "stapel-0_geschwaerzt.pdf",
+        "stapel-1_geschwaerzt.pdf",
+    ]
+
+    # Beim Beenden verschwinden auch die Kopien des Stapels.
+    window.close()
+    qt_app.processEvents()
+    assert ablage.dateien() == []

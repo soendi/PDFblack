@@ -260,6 +260,10 @@ class OcrView(QWidget):
         aus den gerenderten Seiten neu aufgesetzt. Die Datei selbst bleibt
         unveraendert, das Ergebnis landet in einer neuen Datei.
         """
+        # Ein noch laufender Durchgang gehoert zur vorherigen Datei: abbrechen,
+        # sonst startet die Erkennung fuer die neue Datei gar nicht und das
+        # alte Ergebnis landete faelschlich in PDFblack.
+        self._stop_worker()
         self._path = path
         self._password = password
         self._result_path = None
@@ -356,14 +360,20 @@ class OcrView(QWidget):
             self._worker.requestInterruption()
             self._worker.wait(2000)
             self._worker = None
+        self.progress.hide()
 
     def _on_progress(self, index: int, total: int, message: str) -> None:
+        if self.sender() is not self._worker:
+            return
         if total > 0:
             self.progress.setRange(0, total)
             self.progress.setValue(index)
         self.status_label.setText(message)
 
     def _on_done(self, result) -> None:
+        if self.sender() is not self._worker:
+            # Ergebnis eines abgeloesten Laufs - die Datei ist nicht mehr aktuell.
+            return
         self._result_path = self._target_path
         self.text.setPlainText(result.text.strip())
         seiten = result.pages
@@ -392,12 +402,16 @@ class OcrView(QWidget):
         self.resultReady.emit(self._result_path)
 
     def _on_failed(self, meldung: str) -> None:
+        if self.sender() is not self._worker:
+            return
         self.status_label.setText("Erkennung fehlgeschlagen.")
         self.engine_hint.setText(meldung)
         self.engine_hint.show()
         self.message.emit(f"OCR fehlgeschlagen: {meldung}")
 
     def _on_finished(self) -> None:
+        if self.sender() is not self._worker:
+            return
         self._worker = None
         self.progress.hide()
         self._refresh()
