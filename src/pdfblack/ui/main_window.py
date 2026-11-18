@@ -84,6 +84,20 @@ OCR_NAME = "PDFocr"
 OCR_TAGLINE = "Liest aus Bildscans den Text aus PDF Dateien."
 
 
+def _selber_pfad(einer: str | None, anderer: str | None) -> bool:
+    """Meinen beide Pfade dieselbe Datei?
+
+    Windows liefert abgelegte Dateien mit Schraegstrichen zurueck
+    (``C:/Users/...``), waehrend Dialoge Backslashes liefern - ohne Vergleich
+    in der Form des Systems gilt dieselbe Datei sonst als zwei Dateien.
+    """
+    if not einer or not anderer:
+        return False
+    return os.path.normcase(os.path.abspath(einer)) == os.path.normcase(
+        os.path.abspath(anderer)
+    )
+
+
 PRIVACY_HTML = """
 <h3>Alles bleibt auf diesem Rechner</h3>
 <p>PDFblack liest, prüft und schwärzt PDF-Dateien ausschließlich lokal auf dem
@@ -1036,13 +1050,19 @@ class MainWindow(QMainWindow):
             return
         dateien: list[str] = []
         for pfad in pfade:
-            if pfad.lower().endswith(".pdf") and pfad not in dateien:
+            if pfad.lower().endswith(".pdf") and not any(
+                _selber_pfad(pfad, schon) for schon in dateien
+            ):
                 dateien.append(pfad)
         if not dateien:
             return
         if self._queue_total:
-            bekannt = {self._path, *self._queue}
-            weitere = [pfad for pfad in dateien if pfad not in bekannt]
+            bekannt = [self._path, *self._queue]
+            weitere = [
+                pfad
+                for pfad in dateien
+                if not any(_selber_pfad(pfad, schon) for schon in bekannt)
+            ]
             if not weitere:
                 return
             self._queue.extend(weitere)

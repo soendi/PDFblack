@@ -973,7 +973,7 @@ def test_zweite_ablageflaeche_nimmt_mehrere_dateien(window, qt_app, tmp_path):
     qt_app.processEvents()
 
     assert Path(window._path) == Path(dateien[0])
-    assert window._queue == dateien[1:]
+    assert [Path(p) for p in window._queue] == [Path(p) for p in dateien[1:]]
     assert window._queue_total == 3
     assert window.queue_label.text() == "Stapel 1 von 3"
     assert not window.queue_label.isHidden()
