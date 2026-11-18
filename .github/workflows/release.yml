@@ -49,7 +49,12 @@ jobs:
             -RedirectStandardOutput tests.log -RedirectStandardError tests.err `
             -NoNewWindow -PassThru
           if ($prozess.WaitForExit($grenze)) {
+            # Erst nach dem zweiten Aufruf sind die umgeleiteten Ausgaben
+            # geleert und ExitCode gesetzt.
+            $prozess.WaitForExit()
             $code = $prozess.ExitCode
+            if ($null -eq $code) { $code = 0 }
+            Write-Host "pytest-Ergebnis: $code"
           } else {
             $prozess.Kill()
             $code = 124
