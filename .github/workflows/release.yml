@@ -41,8 +41,9 @@ jobs:
         shell: pwsh
         run: |
           # Ungepuffert und mit Zeitlimit: haengt ein Test, bricht der Lauf ab
-          # und nennt den Test, statt still stehen zu bleiben.
-          $grenze = 900000
+          # und nennt den Test, statt still stehen zu bleiben. Die Suite braucht
+          # gut eine Minute; fuenf Minuten sind reichlich Luft.
+          $grenze = 300000
           $prozess = Start-Process -FilePath python `
             -ArgumentList '-u','-m','pytest','tests','-v','--tb=short' `
             -RedirectStandardOutput tests.log -RedirectStandardError tests.err `
@@ -61,7 +62,7 @@ jobs:
             Select-Object -First 10 |
             ForEach-Object { Write-Host "::error::$($_.Line)" }
           if ($code -eq 124) {
-            $letzte = (Get-Content tests.log -Tail 1) -join ''
+            $letzte = (Get-Content tests.log -Tail 5) -join ' | '
             Write-Host "::error::Tests haengen - zuletzt gestartet: $letzte"
           }
           exit 1
