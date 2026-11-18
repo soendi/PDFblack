@@ -1,3 +1,11 @@
+## PDFblack 1.4.1
+
+PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
+
+### Neu in 1.4.1
+
+- **Der Stapel endet sichtbar:** Ist die letzte Datei eines Stapels geschwärzt – oder mit „Nächste Datei“ übersprungen –, entlädt PDFblack sie. Statt der zuletzt bearbeiteten PDF stehen wieder die beiden Ablageflächen da, der Fenstertitel nennt nur noch das Programm, Seitenanzeige und Trefferliste sind leer und „Geschwärzte Kopie speichern“ ist aus. Bisher blieb die letzte Datei geladen, sodass nach dem Stapel nicht zu erkennen war, ob noch etwas offen ist; jetzt zeigt die leere Fläche, dass alles abgearbeitet wurde. Die Statuszeile nennt weiterhin, wie viele Dateien geschwärzt wurden. Einzeln geöffnete PDFs bleiben wie gewohnt im Fenster.
+
 ## PDFblack 1.4.0
 
 PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
@@ -306,15 +314,13 @@ PDF-Dateien automatisch schwärzen – mit farbiger Vorschau vor dem Speichern.
 
 ### Installation
 
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.4.0-Setup.exe`
-
-PDFblack läuft unter Windows 10 und 11. `PDFblack-1.3.18-Setup.exe`
+PDFblack läuft unter Windows 10 und 11. `PDFblack-1.4.1-Setup.exe`
 herunterladen und ausführen (Installer, kein Administrator- oder
 Python-Zubehör nötig).
 
 ### Geprüft
 
-- 295 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern (auch mit Ort dahinter, in getrennten Textblöcken und mit einem Datum davor), fünfstellige PLZ mit Ortschaft, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate samt ausgeschriebenen und abgekürzten Monaten („Febr.“, alle zwölf Monatsnamen, auch in getrennten Textfeldern), umbrochene IBANs, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, die Leserichtung der aus Scans erzeugten Textebene, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen samt Blendenaustausch bei schnellem Wechsel, den Stapel (zweite Ablagefläche, Nächste Datei, Nachschub, Scan im Stapel), das Entladen des Dokuments vor dem Aufräumen beim Beenden, Update-Abfrage und gemerkte Einstellungen
+- 296 automatisierte Tests für Erkennung, Doppelklick auf Wörter, Hausnummern (auch mit Ort dahinter, in getrennten Textblöcken und mit einem Datum davor), fünfstellige PLZ mit Ortschaft, Schweizer PLZ in getrennten Zeilen und Formularfeldern, das Schweizer Strassen- und Namensverzeichnis samt Vergleichsschreibweise, aufgeteilte Strassen und Abkürzungen, Schreibvarianten von Namen, Strassen und Orten, Berufsbezeichnungen samt Zusammensetzungen, alle Datumsformate samt ausgeschriebenen und abgekürzten Monaten („Febr.“, alle zwölf Monatsnamen, auch in getrennten Textfeldern), umbrochene IBANs, die Kategorie „Jahr“ und die Geburtsdatums-Regel, die Plausibilitätsprüfung (IBAN-Prüfziffer, Kalenderdatum, PLZ/Ort, Strassen), die Hinweis-Aktionen samt Wertkorrektur und Prüf-Blinken, die Lerndatei (Korrekturen, Fehlalarme, Wertkorrekturen, Export, Zurücksetzen, Erhalt beim Beenden), die festen Regeln aus der Lerndatei, manuelle Werte, Regex, Überlappungen, Schwärzung, den Tesseract-Aufruf, die Leserichtung der aus Scans erzeugten Textebene, den Neuaufbau der Textebene, die Klickbarkeit der Kopfknöpfe, die änderbaren Copilot-Texte, Kopfzeilen-Positionen samt Blendenaustausch bei schnellem Wechsel, den Stapel (zweite Ablagefläche, Nächste Datei, Nachschub, Scan im Stapel, Entladen der letzten Datei am Stapelende), das Entladen des Dokuments vor dem Aufräumen beim Beenden, Update-Abfrage und gemerkte Einstellungen
 - Selbsttest der gepackten Anwendung (`PDFblack --self-test`) im Windows-Build
 - Speicherprobe mit Schweizer Adresse und Formularfeldern: kein Resttext der geschwärzten Werte im Ergebnis-PDF
 

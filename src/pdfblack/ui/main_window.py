@@ -1097,8 +1097,28 @@ class MainWindow(QMainWindow):
             )
         self._finish_queue()
 
+    def _unload_document(self) -> None:
+        """Die geladene Datei schliessen und die Ablageflaechen zeigen.
+
+        Am Ende eines Stapels bleibt damit keine Datei offen: Die leeren
+        Ablageflaechen zeigen, dass alles abgearbeitet ist.
+        """
+        if self._program != "pdfblack":
+            self._show_program("pdfblack")
+        self.canvas.clear()
+        self._path = None
+        self._password = None
+        self._findings = []
+        self._rebuild_source = None
+        self.rebuild_bar.hide()
+        self.findings_panel.set_findings([])
+        self.stack.setCurrentIndex(0)
+        self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
+        self._update_page_label()
+        self._refresh_state()
+
     def _finish_queue(self) -> None:
-        """Alle Dateien des Stapels sind durch."""
+        """Alle Dateien des Stapels sind durch - keine bleibt offen."""
         gespeichert = self._queue_done
         gesamt = self._queue_total
         self._queue = []
@@ -1106,6 +1126,9 @@ class MainWindow(QMainWindow):
         self._queue_pos = 0
         self._queue_done = 0
         self._refresh_queue_label()
+        # Auch die letzte Datei wird entladen: Bleibt sie stehen, sieht es aus,
+        # als waere der Stapel noch nicht durch.
+        self._unload_document()
         if gespeichert:
             self.statusBar().showMessage(
                 f"Stapel abgearbeitet: {gespeichert} von {gesamt} Datei(en) "

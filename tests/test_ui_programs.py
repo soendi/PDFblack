@@ -1044,6 +1044,25 @@ def test_naechste_datei_rueckt_ohne_speichern_weiter(window, qt_app, tmp_path):
     assert window.queue_label.text() == "Stapel 2 von 2"
 
 
+def test_letzte_datei_ueberspringen_entlaedt_sie_auch(window, qt_app, tmp_path):
+    """Auch "Nächste Datei" am Ende laesst keine PDF im Fenster stehen."""
+    dateien = _stapel_pdfs(tmp_path, 2)
+
+    _drop(window.queue_zone, dateien)
+    qt_app.processEvents()
+
+    window._open_next_in_queue()  # zweite Datei oeffnen
+    qt_app.processEvents()
+    window._open_next_in_queue()  # zweite Datei ueberspringen -> Stapel durch
+    qt_app.processEvents()
+
+    assert window._queue == []
+    assert window._queue_total == 0
+    assert window.queue_label.isHidden()
+    assert window._path is None
+    assert window.stack.currentIndex() == 0
+
+
 def test_weitere_dateien_haengen_sich_an_den_laufenden_stapel(
     window, qt_app, tmp_path
 ):
@@ -1113,6 +1132,8 @@ def test_stapel_erkennt_scan_und_kehrt_nach_pdfblack_zurueck(
     window._save_as()
     qt_app.processEvents()
     assert window._queue_total == 0
+    # Die letzte Datei bleibt nicht offen: der Stapel ist sichtbar durch.
+    assert window._path is None
     assert len(ablage.dateien()) == 2
 
     # Kopflisten leeren, damit beim Schliessen nicht modal nachgefragt wird.
@@ -1143,6 +1164,14 @@ def test_stapel_endet_nach_der_letzten_datei(window, qt_app, tmp_path, monkeypat
     assert window._queue_total == 0
     assert window.queue_label.isHidden()
     assert window.btn_queue_next.isHidden()
+    # Nach der letzten Datei ist keine PDF mehr geladen: Die Ablageflaechen
+    # stehen wieder da, Titel und Seitenanzeige sind leer.
+    assert window._path is None
+    assert window.canvas.page_count == 0
+    assert window.stack.currentIndex() == 0
+    assert window.page_label.text() == ""
+    assert "stapel-1.pdf" not in window.windowTitle()
+    assert not window.btn_save.isEnabled()
     assert sorted(datei.name for datei in ablage.dateien()) == [
         "stapel-0_geschwaerzt.pdf",
         "stapel-1_geschwaerzt.pdf",
