@@ -40,26 +40,10 @@ jobs:
       - name: Tests
         shell: pwsh
         run: |
-          # Ungepuffert und mit Zeitlimit: haengt ein Test, bricht der Lauf ab
-          # und nennt den Test, statt still stehen zu bleiben. Die Suite braucht
-          # gut eine Minute; fuenf Minuten sind reichlich Luft.
-          $grenze = 300000
-          $prozess = Start-Process -FilePath python `
-            -ArgumentList '-u','-m','pytest','tests','-v','--tb=short' `
-            -RedirectStandardOutput tests.log -RedirectStandardError tests.err `
-            -NoNewWindow -PassThru
-          if ($prozess.WaitForExit($grenze)) {
-            # Erst nach dem zweiten Aufruf sind die umgeleiteten Ausgaben
-            # geleert und ExitCode gesetzt.
-            $prozess.WaitForExit()
-            $code = $prozess.ExitCode
-            if ($null -eq $code) { $code = 0 }
-            Write-Host "pytest-Ergebnis: $code"
-          } else {
-            $prozess.Kill()
-            $code = 124
-          }
-          if ($code -eq 0) { exit 0 }
+          # -u schreibt ungepuffert: haengt ein Test, nennt die letzte Zeile
+          # im Log seinen Namen, und -v macht daraus einen lesbaren Eintrag.
+          python -u -m pytest tests -v --tb=short 2>&1 | Tee-Object -FilePath tests.log
+          if ($LASTEXITCODE -eq 0) { exit 0 }
           Write-Host "--- Testfehler ---"
           Get-Content tests.log -Tail 60
           # Die letzten Zeilen als Annotation: ohne Log-Download lesbar.
@@ -69,10 +53,6 @@ jobs:
           Select-String -Path tests.log -Pattern '^(FAILED|ERROR)\s' |
             Select-Object -First 10 |
             ForEach-Object { Write-Host "::error::$($_.Line)" }
-          if ($code -eq 124) {
-            $letzte = (Get-Content tests.log -Tail 5) -join ' | '
-            Write-Host "::error::Tests haengen - zuletzt gestartet: $letzte"
-          }
           exit 1
 
       - name: Installer bauen und selbst testen
